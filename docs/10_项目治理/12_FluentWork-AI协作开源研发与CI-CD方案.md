@@ -399,13 +399,19 @@ CD 分层：
 
 CI 必做：
 
-1. `go fmt`
-2. `go vet`
-3. unit tests
-4. integration tests
-5. schema / migration check
-6. contract tests
-7. Docker build
+1. `gofumpt`
+2. `goimports`
+3. `golangci-lint`（至少包含 `govet`、`staticcheck`、`errcheck`、`ineffassign`、`unused`、`revive`）
+4. unit tests
+5. integration tests
+6. schema / migration check
+7. contract tests
+8. Docker build
+
+说明：
+
+- `go fmt` 是基础下限，但 FluentWork 后端推荐以 `gofumpt + goimports + golangci-lint` 作为长期规范基线；
+- `go vet` 不取消，而是作为 `golangci-lint` 聚合检查中的基础项保留。
 
 CD：
 

@@ -160,8 +160,9 @@
 2. `cmd/`、`internal/`、`migrations/`、`configs/` 骨架；
 3. health / config / logging 基线；
 4. `.github/workflows/backend-ci.yml`：
-   - `go fmt`
-   - `go vet`
+   - `gofumpt`
+   - `goimports`
+   - `golangci-lint`
    - unit test
    - migration check
    - Docker build
@@ -252,7 +253,7 @@
 
 1. meta：Markdown / link / actionlint / 文件命名
 2. ios：build / unit test / smoke
-3. backend：fmt / vet / unit test / migration / Docker build
+3. backend：`gofumpt` / `goimports` / `golangci-lint` / unit test / migration / Docker build
 4. infra：workflow lint / env 模板校验 / deploy dry-run
 5. 4 仓：`CLAUDE.md` / `AGENTS.md` 模板一致性检查
 
