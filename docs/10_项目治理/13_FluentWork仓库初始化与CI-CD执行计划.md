@@ -3,7 +3,7 @@
 **版本**：V1.0  
 **日期**：2026-08  
 **定位**：把 `12_FluentWork-AI协作开源研发与CI-CD方案.md` 细化为可执行的初始化计划  
-**上游依据**：`10_FluentWork项目启动书.md`、`11_FluentWork团队分工文档.md`、`12_FluentWork-AI协作开源研发与CI-CD方案.md`  
+**上游依据**：`10_FluentWork项目启动书.md`、`11_FluentWork团队分工文档.md`、`12_FluentWork-AI协作开源研发与CI-CD方案.md`、`14_FluentWork-Agent与Skills治理策略.md`
 **状态**：计划阶段，待指令后执行
 
 ---
@@ -33,7 +33,8 @@
 1. 组织级 team / branch protection / Projects / secrets 尚未形成明确落地清单；
 2. 4 仓库缺统一的 Issue / PR / CODEOWNERS / workflow skeleton；
 3. `ios`、`backend`、`infra` 仓还未建立工程骨架；
-4. 代码评审、发布门禁、环境审批尚未形成一套串起来的流水线。
+4. 代码评审、发布门禁、环境审批尚未形成一套串起来的流水线；
+5. 4 仓库的 `CLAUDE.md` / `AGENTS.md` / shared skills 真源尚未建立。
 
 ---
 
@@ -44,6 +45,7 @@
 3. **分仓独立初始化**：每个仓库有自己的 CI，但共用一套命名、分支、审查和发布规则。
 4. **默认最小权限**：Actions、Secrets、环境审批都按最小权限配置。
 5. **报告优先，阻断后置**：第一阶段先让检查“跑起来并可见”，第二阶段再将关键项升为 required checks。
+6. **共享真源留在 meta**：当前不新增独立共享 skills 仓，agent / skills 的共享规则统一落在 `fluentwork-meta`。
 
 ---
 
@@ -53,11 +55,12 @@
 
 1. `fluentwork-meta` 治理仓补齐模板与治理入口；
 2. GitHub 组织层设置；
-3. `fluentwork-infra` 建复用 workflow 与环境模板；
-4. `fluentwork-ios` 建工程骨架与 CI skeleton；
-5. `fluentwork-backend` 建工程骨架与 CI skeleton；
-6. 回到 `meta` 仓补首批里程碑 Issue 与跨仓任务映射；
-7. 最后再把 required checks、环境审批和 release gate 收紧。
+3. 在 `meta` 建 shared agent / skills 真源与模板；
+4. `fluentwork-infra` 建复用 workflow 与环境模板；
+5. `fluentwork-ios` 建工程骨架与 CI skeleton；
+6. `fluentwork-backend` 建工程骨架与 CI skeleton；
+7. 回到 `meta` 仓补首批里程碑 Issue 与跨仓任务映射；
+8. 最后再把 required checks、环境审批和 release gate 收紧。
 
 ---
 
@@ -78,8 +81,10 @@
    - `link-check.yml`
    - `actionlint.yml`
    - `docs-filename-check.yml`
-6. 建 `docs/40_研发流程与协作/` 下的流程文档；
-7. 建里程碑 Issue 列表与项目看板字段。
+6. 建 `agents/shared/` 与 `agents/templates/`；
+7. 起草共享 `CLAUDE.md` / `AGENTS.md` 模板与 Matt Pocock skills 使用策略；
+8. 建 `docs/40_研发流程与协作/` 下的流程文档；
+9. 建里程碑 Issue 列表与项目看板字段。
 
 验收标准：
 
@@ -112,6 +117,7 @@
    - 环境变量命名规范
    - secrets 注入规范
    - 回滚说明模板
+5. `CLAUDE.md` / `AGENTS.md` 本仓入口文件
 
 验收标准：
 
@@ -132,7 +138,8 @@
    - build
    - unit test
    - smoke test
-5. 基础目录 owner 规则：
+5. `CLAUDE.md` / `AGENTS.md` 本仓入口文件；
+6. 基础目录 owner 规则：
    - 音频引擎
    - SpeechSession 状态机
    - Debug / 测试桥接
@@ -158,7 +165,8 @@
    - unit test
    - migration check
    - Docker build
-5. 关键目录 owner 规则：
+5. `CLAUDE.md` / `AGENTS.md` 本仓入口文件；
+6. 关键目录 owner 规则：
    - voice gateway
    - session state machine
    - deploy / prod config
@@ -228,6 +236,7 @@
 1. 依赖安装
 2. 基础 lint / format / syntax check
 3. 最小测试或构建
+4. agent 入口文件存在性检查
 
 此阶段不做：
 
@@ -245,6 +254,7 @@
 2. ios：build / unit test / smoke
 3. backend：fmt / vet / unit test / migration / Docker build
 4. infra：workflow lint / env 模板校验 / deploy dry-run
+5. 4 仓：`CLAUDE.md` / `AGENTS.md` 模板一致性检查
 
 ## Phase C：接发布链路
 
@@ -268,6 +278,9 @@
 .github/
   ISSUE_TEMPLATE/
   workflows/
+agents/
+  shared/
+  templates/
 PULL_REQUEST_TEMPLATE.md
 CODEOWNERS
 ```
@@ -278,6 +291,8 @@ CODEOWNERS
 .github/
   workflows/
 CODEOWNERS
+CLAUDE.md
+AGENTS.md
 Package.swift / Xcode project
 Tests/
 ```
@@ -288,6 +303,8 @@ Tests/
 .github/
   workflows/
 CODEOWNERS
+CLAUDE.md
+AGENTS.md
 go.mod
 cmd/
 internal/
@@ -299,6 +316,8 @@ migrations/
 ```text
 .github/
   workflows/
+CLAUDE.md
+AGENTS.md
 env/
 deploy/
 monitoring/
@@ -314,22 +333,26 @@ scripts/
 1. `markdown-lint`
 2. `link-check`
 3. `actionlint`
+4. `agent-config-check`
 
 ### ios
 
 1. `ios-build`
 2. `ios-unit-test`
+3. `agent-config-check`
 
 ### backend
 
 1. `go-vet`
 2. `go-test`
 3. `docker-build`
+4. `agent-config-check`
 
 ### infra
 
 1. `workflow-lint`
 2. `deploy-config-check`
+3. `agent-config-check`
 
 ---
 
@@ -338,6 +361,7 @@ scripts/
 ### M0：治理面就绪
 
 - meta 模板、CODEOWNERS、文档检查 workflow 完成
+- shared agent / skills 真源与模板完成
 - 组织层 teams / projects / protection 规则完成
 
 ### M1：代码仓骨架就绪
@@ -375,11 +399,12 @@ scripts/
 当收到“开始执行”指令后，建议按以下批次落地：
 
 1. 在 `fluentwork-meta` 落模板、CODEOWNERS、基础 workflows；
-2. 配置 GitHub 组织层 team / protection / Projects；
-3. 初始化 `fluentwork-infra`；
-4. 初始化 `fluentwork-ios`；
-5. 初始化 `fluentwork-backend`；
-6. 回到 `meta` 补 milestone issues 与 cross-repo 跟踪。
+2. 在 `fluentwork-meta` 落 shared agent / skills 真源与模板；
+3. 配置 GitHub 组织层 team / protection / Projects；
+4. 初始化 `fluentwork-infra`；
+5. 初始化 `fluentwork-ios`；
+6. 初始化 `fluentwork-backend`；
+7. 回到 `meta` 补 milestone issues 与 cross-repo 跟踪。
 
 ---
 
@@ -390,7 +415,8 @@ scripts/
 1. 4 个仓库都有基础目录与 README；
 2. 4 个仓库都有 `.github/workflows/`；
 3. 4 个仓库都有 PR 模板和 CODEOWNERS；
-4. `main` 分支保护与 required checks 生效；
-5. `meta` 仓已有首批里程碑 issue；
-6. `infra` 仓已有可复用 CI 模板；
-7. 第二审查 AI 已接到 PR 流程中，但先以报告模式运行。
+4. 4 个仓库都有 `CLAUDE.md` 与 `AGENTS.md`；
+5. `main` 分支保护与 required checks 生效；
+6. `meta` 仓已有首批里程碑 issue；
+7. `infra` 仓已有可复用 CI 模板；
+8. 第二审查 AI 已接到 PR 流程中，但先以报告模式运行。

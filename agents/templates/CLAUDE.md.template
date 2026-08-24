@@ -1,0 +1,37 @@
+# {{REPO_NAME}}
+
+## Repo Role
+
+{{REPO_ROLE}}
+
+## Shared Source Of Truth
+
+This repository follows the shared agent rules maintained in `fluentwork-meta`:
+
+- `agents/shared/ai-collaboration.md`
+- `agents/shared/git-and-pr-rules.md`
+- `agents/shared/review-gate.md`
+- `agents/shared/skills-policy.md`
+- `agents/shared/matt-pocock-skills.md`
+
+Treat those shared files as the governance source. This repository file only adds repo-specific constraints.
+
+## Repo-Specific Constraints
+
+{{REPO_SPECIFIC_CONSTRAINTS}}
+
+## High-Risk Areas
+
+{{HIGH_RISK_AREAS}}
+
+## Expected Workflow
+
+1. Read the relevant docs and issue context first.
+2. Prefer minimal diffs over broad rewrites.
+3. Update tests when behavior changes.
+4. Update docs when workflow, interface, or architecture changes.
+5. Respect CODEOWNERS, branch protection, and review gates.
+
+## Skills
+
+Matt Pocock style skills may be used as helpers, but they do not override FluentWork governance. Repository-specific rules always win over generic external skill defaults.

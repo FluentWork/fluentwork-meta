@@ -1,0 +1,38 @@
+# AGENTS
+
+## Repository
+
+- Name: `{{REPO_NAME}}`
+- Role: {{REPO_ROLE}}
+
+## Shared Rules
+
+This repository inherits shared agent policy from `fluentwork-meta/agents/shared/`.
+
+Shared topics:
+
+1. AI collaboration and role split
+2. Git and PR rules
+3. Review gate
+4. Skills policy
+5. Matt Pocock skills usage boundary
+
+## Local Rules
+
+{{LOCAL_RULES}}
+
+## Required Behaviors
+
+1. Read current repository context before editing.
+2. Keep changes scoped to the active task.
+3. Do not bypass review, CI, or owner approval requirements.
+4. Do not perform destructive git operations without explicit approval.
+5. Surface risks clearly when touching high-risk areas.
+
+## High-Risk Paths
+
+{{HIGH_RISK_PATHS}}
+
+## CI Boundary
+
+CI validates outputs and configuration. CI does not run the full interactive skills runtime.
