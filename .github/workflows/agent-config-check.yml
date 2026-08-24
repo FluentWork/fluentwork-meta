@@ -1,0 +1,33 @@
+name: agent-config-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  agent-config-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate shared agent source files
+        run: |
+          set -euo pipefail
+          test -f CLAUDE.md
+          test -f AGENTS.md
+          test -f agents/README.md
+          test -f agents/shared/ai-collaboration.md
+          test -f agents/shared/git-and-pr-rules.md
+          test -f agents/shared/review-gate.md
+          test -f agents/shared/skills-policy.md
+          test -f agents/shared/matt-pocock-skills.md
+          test -f agents/templates/CLAUDE.md.template
+          test -f agents/templates/AGENTS.md.template
+          echo "Shared agent files are present."

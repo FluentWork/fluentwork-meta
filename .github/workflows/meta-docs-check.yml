@@ -1,0 +1,26 @@
+name: meta-docs-check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  meta-docs-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Validate governance documents
+        run: |
+          set -euo pipefail
+          test -f "docs/10_项目治理/12_FluentWork-AI协作开源研发与CI-CD方案.md"
+          test -f "docs/10_项目治理/13_FluentWork仓库初始化与CI-CD执行计划.md"
+          test -f "docs/10_项目治理/14_FluentWork-Agent与Skills治理策略.md"
+          echo "Governance documents are present."
