@@ -29,6 +29,7 @@
 
 1. 本地自检已完成；
 2. CI 必须通过；
-3. CODEOWNERS 要求满足；
-4. 高风险目录需 owner 审批；
-5. 文档、测试、实现三者口径一致。
+3. OpenCodeReview：若存在 `high` finding，必须先修复再合；无 `high` 方可合入（详见 `review-gate.md`）；
+4. CODEOWNERS 要求满足；
+5. 高风险目录需 owner 审批；
+6. 文档、测试、实现三者口径一致。
