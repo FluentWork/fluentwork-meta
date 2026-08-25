@@ -1,8 +1,8 @@
 # FluentWork 技术方案设计文档
 
-**版本**：V3.3　**日期**：2026年8月　**对应 PRD**：V1.4　**评审角色**：技术负责人 / 架构师
+**版本**：V3.4　**日期**：2026年8月　**对应 PRD**：V1.4　**评审角色**：技术负责人 / 架构师
 
-> V2.0：语音链路定案火山引擎实时语音方案。V3.0：**客户端技术转型——放弃 Flutter 跨端，改为 iOS SwiftUI 原生优先**；新增转型决策论证与三方库选型；Prompt 工程与语料库拆分为独立专项文档（《FluentWork-Prompt工程与语料库设计文档》），本文保留接口衔接说明。V3.1：与 PRD V1.3 对齐——最低系统版本定为 iOS 17+（消除 NavigationStack/@Observable/SwiftData 的版本矛盾）；发音评测与订阅内购后置到 V1.1；新增端到端注入能力验证（B7 依赖项，见《FluentWork端到端注入能力验证文档》）。**V3.3：iOS 状态管理定案轻量 Redux（TGReduxKit 2.0.0）+ Factory 依赖注入（ADR-001，详见《FluentWork-iOS App端技术设计文档》1.4），三方库白名单同步更新。** 本文档以企业实际落地为出发点。
+> V2.0：语音链路定案火山引擎实时语音方案。V3.0：**客户端技术转型——放弃 Flutter 跨端，改为 iOS SwiftUI 原生优先**；新增转型决策论证与三方库选型；Prompt 工程与语料库拆分为独立专项文档（《FluentWork-Prompt工程与语料库设计文档》），本文保留接口衔接说明。V3.1：与 PRD V1.3 对齐——最低系统版本定为 iOS 17+（消除 NavigationStack/@Observable/SwiftData 的版本矛盾）；发音评测与订阅内购后置到 V1.1；新增端到端注入能力验证（B7 依赖项，见《FluentWork端到端注入能力验证文档》）。**V3.3：iOS 状态管理定案轻量 Redux（TGReduxKit）+ Factory 依赖注入（ADR-001，详见《FluentWork-iOS App端技术设计文档》1.4），三方库白名单同步更新。****V3.4：iOS 仓落地后回写 6.3 白名单——TGReduxKit 跟进 5.x（from 5.0.1）；新增 TGNavigationStack（from 1.1.0）、TGFeatureFlag（from 0.5.0）、Moya（网络实现落点）；明确 Alamofire 仅作 Moya 传递依赖、禁止 App 直接引用。** 本文档以企业实际落地为出发点。
 
 ---
 
@@ -166,10 +166,11 @@ WebSocket，二进制音频帧 + JSON 控制帧：
 
 > 版本决策说明：早期方案写 iOS 15+，但 NavigationStack（iOS 16+）、@Observable（iOS 17+）、SwiftData（iOS 17+）三处互相打架，兼容器旧版本意味着双轨维护（ObservableObject 兜底 + GRDB 兼容层）。目标用户群（互联网/外企程序员）设备更新率高，2026 年 iOS 17+ 设备占比已足够，直接定为最低版本，换取技术栈单一。
 
-- **UI**：SwiftUI，导航用 NavigationStack；"说的房间"等沉浸页用全屏 cover；
-- **响应式与并发**：不引入 Combine，统一 Swift Concurrency（async/await + Actor）；状态管理用**轻量 Redux 单向数据流**（TGReduxKit，基于 @Observable 的 iOS 17 原生适配）：单一根 Store + ScopedStore；依赖注入用 Factory（见 6.3）；
+- **UI**：SwiftUI，导航用系统 `NavigationStack`，经 **TGNavigationStack** 做 reducer 驱动绑定（Tab 多栈 / 全屏 cover 由 App 编排）；"说的房间"等沉浸页用全屏 cover；
+- **响应式与并发**：不引入 Combine，统一 Swift Concurrency（async/await + Actor）；状态管理用**轻量 Redux 单向数据流**（TGReduxKit 5.x，基于 @Observable 的 iOS 17 原生适配）：单一根 Store + ScopedStore；依赖注入用 Factory（见 6.3）；
 - **音频引擎**：AVAudioEngine 采集 + AVAudioPlayerNode 流式播放；`AVAudioSession` 设 `.voiceChat` 模式启用硬件 AEC 与回声消除（Voice Processing I/O）；打断逻辑在音频引擎层实现（本地 200ms 停播）；
-- **网络**：业务接口用 `URLSession` + async/await；语音 WebSocket 用原生 `URLSessionWebSocketTask`（稳定，不引入三方 WS 库）；
+- **网络**：业务 HTTPS 用 **Moya**（`NetworkClientProtocol` 对上隔离）；语音 WebSocket 用原生 `URLSessionWebSocketTask`（稳定，不引入三方 WS 库）；
+- **Feature Flag**：远程/本地开关经 **TGFeatureFlag** `FeatureFlagResolver` 解析为冷快照，再写入 Redux（Store 为业务真源；禁止用 `@Observable FeatureFlagService` 当第二真源）；
 - **Opus 编解码**：火山引擎 iOS SDK 自带的音频编解码优先；若需自行编码，SPM 接入 libopus 封装；
 - **本地存储**：SwiftData 缓存语料库/历史/每日一读（iOS 17 统一定案，不再保留 GRDB 兼容轨）；读本地优先 + 后台同步；录音上传后 7 天本地清理；
 - **内购**：StoreKit 2（原生），交易凭据服务端校验；`Transaction.currentEntitlements` 管理订阅状态（V1.1 实施，MVP 预留接口）；
@@ -181,12 +182,15 @@ WebSocket，二进制音频帧 + JSON 控制帧：
 | 库 | 用途 | 选择理由 |
 |---|---|---|
 | 火山引擎 iOS SDK | 实时语音/TTS/ASR 接入 | 供应商官方，音频链路质量保障 |
-| TGReduxKit（exact 2.0.0） | 全局状态管理（Redux 单向数据流） | 与 iOS 17+ / @Observable / Swift Concurrency 完全同栈；比 TCA 轻；选型对比见 iOS 端详设 1.4 |
+| TGReduxKit（from 5.0.1，跟进 5.x） | 全局状态管理（Redux 单向数据流） | 与 iOS 17+ / @Observable / Swift Concurrency 完全同栈；5.x 为纯 Reducer + Middleware→Effect；选型对比见 iOS 端详设 1.4 |
 | Factory（exact 3.3.2） | 依赖注入容器 | 轻量、SwiftUI/@Observable 友好、测试可重置容器；统一注册 Service 与 Middleware 工厂 |
+| TGNavigationStack（from 1.1.0） | reducer 驱动导航状态 / 手势回写 | 与 TGReduxKit 同作者生态；单向数据流下绑定 NavigationStack + sheet/fullScreenCover；不耦合具体 Store |
+| TGFeatureFlag（from 0.5.0） | Feature Flag 解析（Resolver + 冷 Snapshot） | Swift 6 严格并发；Provider 链 / Debug；Redux App 只消费 Resolver，Store 仍为 SoT |
+| Moya（fork `tangzzz-fan/Moya`，当前 branch master） | 业务 HTTPS 网络实现落点 | 对上只暴露 `NetworkClientProtocol`；与 Factory / 插件工厂接缝对齐 |
 | SwiftLint | 代码规范静态检查 | 团队规范统一，CI 集成 |
 | Pulse（可选） | 网络请求调试日志 | 内测期排查音频链路问题，Release 移除 |
 
-明确不引入：Alamofire（URLSession 足够）、RxSwift/Combine 三方扩展（Swift Concurrency 统一）、GRDB（iOS 17+ 定案后统一用 SwiftData）、Lottie（动效用 SwiftUI 原生动画，PRD 纪律禁止花哨动效）、Firebase 全家桶（自建埋点 + 国内合规考虑）、TCA（框架锁定与心智负担，ADR-001 排除）。
+明确不引入：App 代码**直接**依赖 Alamofire（仅允许作为 Moya 的传递依赖）、RxSwift/Combine 三方扩展（Swift Concurrency 统一）、GRDB（iOS 17+ 定案后统一用 SwiftData）、Lottie（动效用 SwiftUI 原生动画，PRD 纪律禁止花哨动效）、Firebase 全家桶（自建埋点 + 国内合规考虑）、TCA（框架锁定与心智负担，ADR-001 排除）、KeychainAccess / swift-log 等未列库（需先回写本表再引入）。
 
 ### 6.4 客户端架构
 
