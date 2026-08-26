@@ -8,42 +8,47 @@
 
 ```text
 作者自检
-  -> 本地 OpenCodeReview（git pre-commit）
+  -> gstack /review（合入前结构审查）
   -> CI checks（build / test / lint）
   -> 人类 owner 审批（高风险目录）
   -> merge
 ```
 
-可选：本地再用 `gstack /review` 做更深的结构审查（不替代 OCR 门禁）。
+## 当前策略（2026-08）
 
-## OpenCodeReview 合入规则（强制）
+1. **主审查**：使用 **gstack `/review`** 对相对 base 的 diff 做合入前审查；
+2. **OpenCodeReview（OCR）本地 pre-commit 门禁：暂停**——各仓 `ocr-local-review.sh` 不再阻断提交；
+3. GitHub **不**运行 `opencode-review` workflow；
+4. OCR 脚本与 `.opencodereview/` 配置可保留以便日后恢复，但默认不启用。
 
-以本地 OpenCodeReview（`ocr review` + `ocr-fail-on-high.sh`）的 **severity** 为准：
+## gstack `/review` 合入规则
 
-1. **存在任意 `high` / `critical` finding → 禁止提交**，必须先修改，直到该轮 review 无 `high`/`critical`；
-2. **没有 `high`/`critical` → 可以提交**（`medium` / `low` / nit 不阻塞，可记 follow-up）；
-3. 豁免仅允许人类 owner 书面说明原因（commit/PR 说明），且不得用于安全类 `high`；紧急旁路使用 `SKIP_OCR=1` 时必须同样留痕；
-4. 以最新一次成功完成的本地 review run 为准；修完代码后须再跑一轮再判。
+1. 开 PR / 合入前应跑一轮 `gstack /review`（或等价 Cursor skill `/review`）；
+2. 对 **高风险目录** 与明确缺陷类发现：合入前必须处理或由人类 owner 书面豁免；
+3. 机器审查不能替代人类 owner；高风险目录仍须 owner 强审；
+4. 以最新一轮 review 结论为准；修完代码后再跑一轮。
 
-判定口径：
+判定口径（与既有 severity 习惯对齐）：
 
-- `high` / `critical`：缺陷、数据损坏、鉴权/票据失效、明显安全问题等必须修；
-- `medium` / `low`：可提交后跟进，除非人类 owner 明确要求本变更处理。
+- 必须修：缺陷、数据损坏、鉴权/票据失效、明显安全问题等；
+- 可跟进：风格、文档漂移、非阻断测试缺口（除非 owner 要求本 PR 处理）。
 
-## 本地落地（三仓统一）
+## 本地落地（三仓）
 
 各代码仓（`fluentwork-ios` / `fluentwork-backend` / `fluentwork-infra`）：
 
-1. 一次性启用 hook：`./scripts/setup-git-hooks.sh`（iOS 为 `./Scripts/setup-git-hooks.sh`）
-2. pre-commit 调用 `ocr-local-review.sh` → `ocr-fail-on-high.sh`
-3. GitHub **不再**运行 `opencode-review` workflow
+1. 可选：`./scripts/setup-git-hooks.sh`（iOS：`./Scripts/setup-git-hooks.sh`）仍可启用 `.githooks`；
+2. pre-commit 调用的 `ocr-local-review.sh` **当前直接放行**（打印 OCR 已暂停提示）；
+3. 合入前由作者或 agent 执行 **gstack `/review`**。
+
+紧急旁路：无需 `SKIP_OCR`；OCR 门禁已暂停。
 
 ## 规则
 
 1. 机器审查不能替代人类 owner；
-2. 本地 OCR 对 `high`/`critical` 具有提交否决效力（见上节）；非 `high` 仍可作为报告层；
-3. 关键目录必须保留人类强审；
-4. 对低价值噪音评论应收敛到 summary，不让 inline comments 淹没协作记录。
+2. 合入前以 gstack `/review` + CI + owner 为准；
+3. 高风险目录必须保留人类强审；
+4. 低价值噪音应收敛，避免淹没协作记录。
 
 ## 高风险目录示例
 
@@ -57,4 +62,4 @@
 1. findings first；
 2. 给文件和行号；
 3. 区分 bug、risk、missing test、docs drift，并标注 severity（`high` / `medium` / `low`）；
-4. 明确哪些必须修（至少全部 `high`/`critical`）、哪些可接受豁免。
+4. 明确哪些必须修、哪些可接受豁免。
