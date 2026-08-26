@@ -23,12 +23,13 @@
 3. 写清验收点；
 4. 给出测试结果；
 5. 标明风险点；
-6. 若涉及第二审查 AI，记录其主要 findings。
+6. 若本地 OpenCodeReview 曾报 findings，记录主要结论与处置（已修 / follow-up）。
 
 ## 合入前检查
 
 1. 本地自检已完成；
-2. CI 必须通过；
-3. CODEOWNERS 要求满足；
-4. 高风险目录需 owner 审批；
-5. 文档、测试、实现三者口径一致。
+2. 本地 OpenCodeReview pre-commit 已通过：若存在 `high`/`critical` finding，必须先修复再提交；无 `high`/`critical` 方可提交（详见 `review-gate.md`）；紧急 `SKIP_OCR=1` 须在 commit/PR 说明原因；
+3. CI 必须通过；
+4. CODEOWNERS 要求满足；
+5. 高风险目录需 owner 审批；
+6. 文档、测试、实现三者口径一致。

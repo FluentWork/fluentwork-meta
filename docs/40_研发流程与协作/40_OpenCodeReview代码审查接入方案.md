@@ -2,9 +2,9 @@
 
 **版本**：V1.0  
 **日期**：2026-08  
-**定位**：定义 FluentWork 如何把 OpenCodeReview 接入 GitHub PR 审查链路  
+**定位**：定义 FluentWork 如何把 OpenCodeReview 接入审查链路（历史方案：GitHub PR）  
 **上游依据**：`12_FluentWork-AI协作开源研发与CI-CD方案.md`、`13_FluentWork仓库初始化与CI-CD执行计划.md`  
-**状态**：方案阶段，待指令后执行
+**状态**：已被本地 pre-commit 方案取代（见 `43_三仓协作与Review Workflow配置说明.md` 与 `agents/shared/review-gate.md`）。下文保留作演进记录，不再作为现行执行口径。
 
 ---
 
