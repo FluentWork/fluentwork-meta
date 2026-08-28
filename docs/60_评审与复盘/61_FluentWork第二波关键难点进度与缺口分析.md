@@ -16,6 +16,8 @@
 >
 > **③ 两个"先定案再动码"的前置不要省：**`I13`（语料库同步策略定案，`I9` 前置）与 `B14` 档位结论回写（`B12` 门禁）。
 >
+> **④ 防腐层与成本账是两条容易被漏掉的工程纪律：**供应商抽象（`VoiceProvider`）目前不存在，`B13` 必须防腐层先行（否则火山专有类型会扩散进网关主流程）；`ai_cost_logs` 有表无写入无测试，`B8` 必须带 cost recorder 与专项单测，否则单位经济模型的数据基础从第一天就是坏的。
+>
 > 上述前置均已落盘为 issue：`meta` #12（PREREQ 供应商闭环）、`backend` `B15`（#28）、`ios` `I13`（#23）。
 
 ---
@@ -59,6 +61,26 @@
 2. `internal/voiceproto/frames_test.go` 覆盖帧编解码契约（可复用）；
 3. iOS `SocketTransportTests` 覆盖帧收发与丢帧门（可复用）；真实音频回环、打断时延均无测试。
 
+**防腐层（ACL）设计盘点（2026-08-29）**
+
+结论：**外侧半层已就位，内侧供应商抽象不存在。**
+
+| 层 | 现状 | 证据 |
+|---|---|---|
+| 客户端 ⇄ 网关（自有协议） | 已就位：自有 WSS 帧契约（`wss-control-frames-v1.json`）本身就是隔离带 | 帧契约 + 两端编解码测试 |
+| iOS 音频能力抽象 | 已就位：`AudioEngineProtocol`（采集 / 打断语义）+ `PlaceholderAudioEngine` 占位，供应商无关 | `AppDependencies.swift` |
+| iOS 传输抽象 | 已就位：`SocketTransportProtocol` + `InMemorySocketTransport` 测试替身 | `Shared/FluentWorkNetworking/Socket/` |
+| 网关 ⇄ 单体内部边界 | 已就位：`TicketConsumer` / `SessionLifecycle` 接口 | `internal/voicegateway/` |
+| **网关 ⇄ 火山（供应商抽象）** | **不存在**：无 `VoiceProvider` 类接口，stub 内联在 `handler.go`，协议适配无落点 | 全库无供应商接口定义 |
+
+处置：`B13` 已更新——防腐层先行（`VoiceProvider` 接口 + 能力声明，火山与 mock 都是适配器），`handler` 主流程不允许出现火山专有类型；该要求已写入 `B13` 的 Scope / AC。
+
+**模拟接入测试方案与评价标准现状**
+
+- 已有可复用资产：`InMemorySocketTransport`（iOS 测试替身）、`frames_test.go` 契约测试模式、《`50_FluentWork端到端注入能力验证文档`》的用例 + 通过标准 + 报告模板方法论；
+- 缺口：**无 `MockVoiceProvider`，无成文的语音链路模拟接入测试方案**；评价指标散落在各文档（首响 P90 ≤ 1.5s / 网关附加延迟 < 30ms / 打断 ≤ 200ms / 三级降级），未聚合为可执行方案；
+- 处置：`B13` 已更新——随票交付 `MockVoiceProvider`（无真实凭证可跑）与模拟接入测试方案（用例集 + 评价标准：首响 / 转发延迟 / 打断 / 降级切换成功率 / 帧序列号完整性）。
+
 **缺口与可补充项**
 
 1. 立即启动 `B14` 注入 POC（不依赖网关，唯一可以马上开始的任务）；
@@ -89,6 +111,15 @@
 1. `internal/session/service_test.go` 11 个测试，覆盖任务认领 / 重试 / 幂等（基建可信）；
 2. `internal/session/http_test.go` 8 个测试，覆盖三态轮询接口；
 3. 评价 / 炼化内容生成、JSON Schema 校验、成本落账：零测试（尚无实现）。
+
+**成本监控（ai_cost_logs）专项盘点（2026-08-29）**
+
+结论：**只有表，没有写入路径，更没有测试。**
+
+1. migration 0002 已建 `ai_cost_logs` 表（含 `task_type` / `model` / `tokens_in` / `tokens_out` / `audio_sec` / `cost_fen`），建表注释明确"写入路径随 AI 调用落地接入"；
+2. 后端 Go 代码对 `ai_cost_logs` 零引用：无写入、无查询、无单测；`embed_test` 仅验证 migration 存在；
+3. 技术方案 3.2 要点 3 的纪律（"每次 AI 调用同步落一条，不允许后补"）目前没有任何实现承接；
+4. 处置：`B8` 已更新——新增 cost recorder 组件（与结果同事务落账，"结果在、账必在"），并新增专项单测要求：`cost_fen` 单价计算 / 字段口径 / 同事务提交 / 重试不重复记账 / 写账失败视为任务失败不静默丢账；额度校验仍属 V1.1 不进本期。
 
 **缺口与可补充项**
 
