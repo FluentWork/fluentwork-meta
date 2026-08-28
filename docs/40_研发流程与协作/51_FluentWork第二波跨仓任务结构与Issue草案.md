@@ -301,6 +301,23 @@
 
 顺序说明：`B14` 不依赖网关接入，是 Phase 0 中唯一可以立即开始的任务。
 
+## B15. 离线评估集与 Prompt 回归基线（B8 质量前置）
+
+范围：
+
+1. 评价 / 炼化离线评估集（50-100 条标注样本，内测前用合成 / 演示素材）
+2. 自动回归判定：Schema 合法性 / 评价引用原句 / 炼化三元组完整性
+3. 一条命令可跑的回归入口，每次改 Prompt 后执行
+
+依赖：
+
+- 33 号文档 Prompt 口径；需在 `B8` 提测前完成（作为提测门禁）
+
+验收重点：
+
+1. 技术方案 3.4 的"离线评估集 W3 前建好"欠账补齐（见 61 号文档难点 2）
+2. `B8` 提测时回归基线可跑且全绿
+
 ---
 
 ## 五、第二波 iOS tickets 草案
@@ -422,6 +439,24 @@
 3. 不修改 `SpeechSession` 状态机本体，接线继续走 Middleware
 4. 说的房间高频路径（波形 / 流式文本）帧率抽查无明显劣化（32 号文档 1.4.6）
 
+## I13. 语料库本地优先同步策略定案（I9 前置）
+
+范围：
+
+1. 同步策略一页定案：冲突口径 / 游标推进 / 删除语义 / 收藏状态同步
+2. 游客归并场景：`merge` 完成后本地缓存失效 / 重建口径
+3. 弱网行为：只读降级、写入排队与失败重试
+4. 定案回写仓库文档，作为 `I9` 实现与验收依据
+
+依赖：
+
+- `B10` 契约草案（可先基于本文档草案定案，`B10` 落地后核对）
+
+验收重点：
+
+1. 定案覆盖四类口径，无悬而未决项（见 61 号文档难点 3）
+2. `I9` 弱网本地优先测试用例从定案推导
+
 ---
 
 ## 六、跨仓依赖顺序
@@ -465,6 +500,7 @@
 - `EPIC: 每日一读`
 - `EPIC: 即时反馈命中检测`
 - `EPIC: 语音链路火山做实`
+- `PREREQ: 火山供应商三项商务前置闭环（额度算账 / 协议条款 / 并发配额）`（例外：非 Epic 的跨仓前置跟踪票，不挂实现任务）
 
 ### `backend`
 
@@ -475,6 +511,7 @@
 - `B12: add B7 hit detection path`
 - `B13: connect voice-gateway to Volcano realtime speech`
 - `B14: run end-to-end text injection POC`
+- `B15: build offline evaluation dataset and prompt regression baseline`
 
 ### `ios`
 
@@ -484,6 +521,7 @@
 - `I10: add daily read page`
 - `I11: add badge feedback display`
 - `I12: replace placeholder audio engine with real pipeline`
+- `I13: draft corpus local-first sync strategy decision doc`
 
 链接规则（沿用第一波）：
 

@@ -85,13 +85,15 @@
 5. `B12: add B7 hit detection path`
 6. `B13: connect voice-gateway to Volcano realtime speech`
 7. `B14: run end-to-end text injection POC`
+8. `B15: build offline evaluation dataset and prompt regression baseline`
 
 原因：
 
 1. `B8` / `B9` 是 iOS 回顾页（`I7`）的前置；
 2. `B10` 是入库与命中检测的共同数据基础；
 3. `B12` 放最后，等语料数据就位；
-4. `B13` / `B14` 属 Phase 0 并行轨：`B14` 不依赖网关接入，应最先开始；`B12` 的启动以 `B14` 结论回写为前提。
+4. `B13` / `B14` 属 Phase 0 并行轨：`B14` 不依赖网关接入，应最先开始；`B12` 的启动以 `B14` 结论回写为前提；
+5. `B15` 是 `B8` 的质量前置（见 61 号文档难点 2）：`B8` 提测前，回归基线必须可跑且全绿。
 
 ### Step 3：最后在 `fluentwork-ios` 建第二波 issue
 
@@ -103,13 +105,15 @@
 4. `I10: add daily read page`
 5. `I11: add badge feedback display`
 6. `I12: replace placeholder audio engine with real pipeline`
+7. `I13: draft corpus local-first sync strategy decision doc`
 
 原因：
 
 1. `I7` 依赖 `B9`，但渐进加载骨架可先行；
 2. `I9` 的本地缓存层可在契约冻结后独立起步；
 3. `I11` 必须晚于 `B12` 的帧契约；
-4. `I12` 属 Phase 0，与 `B13` 并行，联调依赖网关真链路。
+4. `I12` 属 Phase 0，与 `B13` 并行，联调依赖网关真链路；
+5. `I13` 是 `I9` 的前置（见 61 号文档难点 3）：同步策略定案回写后再动码。
 
 ---
 
@@ -237,7 +241,7 @@ FluentWork 第二波的实际推进顺序应统一为：
 
 1. 先收尾第一波 OPEN issue
 2. 再 `meta` 建 5 个 Epic（含 Phase 0 语音做实）
-3. 再 `backend` / `ios` 建第二波 issue（含 `B13`/`B14`/`I12`）
+3. 再 `backend` / `ios` 建第二波 issue（含 `B13`/`B14`/`B15`/`I12`/`I13`）
 4. 编码按 Phase 0（并行）+ Phase A → B → C → D 推进，每仓并行不超过 2 个 PR
 
 这套顺序的目的与第一波相同：
