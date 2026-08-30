@@ -161,11 +161,11 @@ B7 命中检测旁路（B12）
 2. API Key：Dev 用 Key（与 default 下 `fw-*` Endpoint 同项目）  
 3. Endpoint：见第十节「Dev 清单」  
 
-**生产口径（Endpoint 已建，连通性部分待修）：**
+**生产口径（已落地，六路 smoke PASS）：**
 
 1. 项目：`FluentWork-Prod`  
-2. API Key：Prod 专用 Key（已创建）  
-3. Endpoint：六路已创建（见第十节「Prod 清单」）；其中 `fw-review-refine` / `fw-drill-judge` 实测仍 404，需在控制台核对 ID 或重建  
+2. API Key：Prod 专用 Key  
+3. Endpoint：见第十节「Prod 清单」（含 `fw-drill-judge` = `…pmkg6`）  
 4. 生产环境变量只注入 Prod Key + Prod `ep-`，**禁止** default Key 打生产流量  
 5. 账单与配额按 Prod 项目单独核算  
 
@@ -298,7 +298,7 @@ ARK_EP_TEXT_DEGRADE=ep-...
 | `fw-topic-card` | `ep-20260830204912-wtjw9`（pro） | PASS |
 | `fw-hit-match` | `ep-20260830205333-prddb`（turbo） | PASS |
 | `fw-drill-judge` | `ep-20260830205423-xg4pd`（turbo） | PASS |
-| `fw-text-degrade` | 旧 `ep-…-d9c8n` **404** — 需在 default **重建** 后回填 | 待修 |
+| `fw-text-degrade` | `ep-20260830205520-d9d8n`（turbo） | PASS |
 | 豆包语音 API Key | `X-Api-Key` + TTS | PASS |
 
 ### 10.2 Prod（项目 `FluentWork-Prod`）
@@ -311,7 +311,7 @@ Endpoint 已创建；用 Prod API Key 实测：
 | `fw-daily-read` | `ep-20260830211650-vkdj2` | pro | PASS |
 | `fw-topic-card` | `ep-20260830211715-q79x9` | pro | PASS |
 | `fw-hit-match` | `ep-20260830211747-vwtrb` | turbo | PASS |
-| `fw-drill-judge` | `ep-20260830211815-pmkg8`（请在控制台再核对后缀） | turbo | **404 待修** |
+| `fw-drill-judge` | `ep-20260830211815-pmkg6` | turbo | PASS |
 | `fw-text-degrade` | `ep-20260830211850-pf2ts` | turbo | PASS |
 
 纪律：生产只注入 Prod Key + 上表 Prod `ep-`；**禁止**用 default Key 打 Prod Endpoint。
@@ -320,10 +320,10 @@ Endpoint 已创建；用 Prod API Key 实测：
 
 | 项 | 说明 | 阻断谁 |
 |---|---|---|
-| default 重建 `fw-text-degrade` | Dev 六路全绿前必做 | 本地文本降级 |
-| Prod 修复 `fw-drill-judge` | 控制台复制精确 `ep-` 或重建 | 生产闪测判定 |
 | 语音 RTC / ASR ResourceId + WSS | TTS HTTP 已通 ≠ realtime | `B13`/`B14` |
 | `meta` #12 商务三项 | 额度 / 不训练 / 并发 | live 冻结 B12 前 |
+
+> 方舟文本侧：Dev（default）与 Prod（FluentWork-Prod）**六路 Endpoint 均已 smoke PASS**（2026-08-30）。
 
 ### 10.4 连通性测试
 
