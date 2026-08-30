@@ -91,7 +91,8 @@ B7 命中检测旁路（B12）
 1. Base URL 形如：`https://ark.cn-beijing.volces.com/api/v3`（以控制台为准）  
 2. 请求里的 `model` 填 **Endpoint ID（`ep-…`）**，不是营销名  
 3. 评价 / 炼化必须开 **结构化输出 / JSON Schema**（或等价 constrained decoding）；不开则不要接 `B8`  
-4. 每次调用落 `ai_cost_logs`（技术方案纪律）
+4. 每次调用落 `ai_cost_logs`（技术方案纪律）  
+5. 若 endpoint 绑定「深度思考 / thinking」能力：主路径评价任务应对齐 **P90 ≤ 15s**，当前工程默认关闭 thinking；场景与可选落地见 `35_FluentWork深度思考模型场景与落地讨论.md`
 
 **文本模型档位怎么选（避免被型号改名坑到）：**
 
