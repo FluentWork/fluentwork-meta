@@ -14,8 +14,9 @@ FluentWork 在火山侧是 **「豆包语音 + 火山方舟」双控制台**：
 
 | 控制台 | 解决什么 | 产出凭证 | 谁用 |
 |---|---|---|---|
-| **豆包语音**（Speech） | 实时听/说：端到端对话、流式 ASR、流式 TTS | `AppID` + `Access Token`（+ 各服务 ResourceId） | `voice-gateway`（`B13`/`B14`）、模块化降级链路 |
-| **火山方舟**（Ark） | 文本大模型：评价/炼化/每日一读/命中匹配等 | `API Key` + 各场景 `Endpoint ID`（`ep-…`） | `app-server` / `ai-worker`（`B8`/`B11`/`B12`） |
+| **豆包语音**（Speech） | 实时听/说：端到端对话、流式 ASR、流式 TTS | **API Key**（新版控制台；请求头 `X-Api-Key`，不再使用 AppID / Access Token）+ 各服务 ResourceId | `voice-gateway`（`B13`/`B14`）、模块化降级链路 |
+| **火山方舟**（Ark） | 文本大模型：评价/炼化/每日一读/命中匹配等 | `API Key`（`ark-…`）+ 各场景 `Endpoint ID`（`ep-…`）；**Key 与 Endpoint 须同项目** | `app-server` / `ai-worker`（`B8`/`B11`/`B12`） |
+
 
 纪律（技术方案硬口径）：
 
@@ -61,7 +62,7 @@ B7 命中检测旁路（B12）
 | 录音文件识别（可选） | 会话结束后补转写兜底（非主路径） | 后续优化 | P2 |
 | 发音评测类能力（若控制台有） | **V1.1 再开**，MVP 不做 | 后置 | 不做 |
 
-同一应用的 `AppID` / `Access Token` 通常可覆盖端到端 + 流式 ASR；调用时用不同 **ResourceId / 接口路径** 区分服务（以官方 API 文档为准）。
+同一应用下用 **API Key（`X-Api-Key`）** 鉴权即可覆盖端到端 + 流式 ASR + TTS；调用时用不同 **ResourceId / 接口路径** 区分服务（以官方 API 文档为准）。本项目口径不再依赖 AppID / Access Token。
 
 端到端选型注意（对接 `B14`）：
 
@@ -158,28 +159,30 @@ B7 命中检测旁路（B12）
 
 ### 4.2 方舟侧怎么建
 
-1. 一个业务账号下：`API Key` 分 `dev` / `prod` 两把，权限最小化  
-2. Endpoint 按第二节命名，**禁止**所有场景共用一个 ep（否则成本与限流无法拆）  
-3. 在 Endpoint 备注里写清：对应 FluentWork issue（如 `B8`）
+1. 项目：`FluentWork-Dev` / `FluentWork-Prod`（可再加 Staging）  
+2. **每个项目一把 API Key**（本地默认用 Dev）  
+3. **Endpoint 必须建在与 Key 相同的项目里**——Key 在 Dev、ep 留在 `default` 会 403/404（已实测）  
+4. Endpoint 按第二节命名，**禁止**所有场景共用一个 ep  
+5. 在 Endpoint 备注里写清：对应 FluentWork issue（如 `B8`）
 
 ### 4.3 密钥落盘（工程）
 
 建议环境变量（名称可微调，但语义固定）：
 
 ```text
-# 豆包语音（gateway）
-VOLC_SPEECH_APP_ID=
-VOLC_SPEECH_ACCESS_TOKEN=
-VOLC_SPEECH_RESOURCE_RTC=          # 端到端 resource，以控制台为准
+# 豆包语音（gateway）— 新版仅 API Key
+VOLC_SPEECH_API_KEY=
+VOLC_SPEECH_RESOURCE_RTC=
 VOLC_SPEECH_RESOURCE_ASR=
-VOLC_SPEECH_RESOURCE_TTS=
+VOLC_SPEECH_RESOURCE_TTS=seed-tts-2.0
 
-# B14 POC 直连（可与上共用）
-VOLC_POC_ENDPOINT=
+# B14 POC 直连（可与上共用语音 Key）
 VOLC_POC_API_KEY=
 
-# 火山方舟（worker / app-server）
-ARK_API_KEY=
+# 火山方舟（worker / app-server）— Key 与 ep 同项目
+ARK_API_KEY_DEV=ark-...
+ARK_API_KEY_PROD=ark-...
+ARK_API_KEY=                 # 本地可指向 DEV
 ARK_EP_REVIEW_REFINE=ep-...
 ARK_EP_DAILY_READ=ep-...
 ARK_EP_HIT_MATCH=ep-...
