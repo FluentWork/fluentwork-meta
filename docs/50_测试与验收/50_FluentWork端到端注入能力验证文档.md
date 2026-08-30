@@ -101,6 +101,19 @@ B7（对话中命中已练话术块的即时反馈）是产品差异化的核心
 
 ---
 
+## 七、执行状态（2026-08-30）
+
+| 项 | 状态 |
+|---|---|
+| T9 窗口测量脚手架（backend `internal/voicepoc` + `cmd/poc-injection-window`） | 已落地；mock 路径可重复跑 |
+| 火山 POC 凭证 / meta #12 PREREQ | **未闭环** → live 档位结论不可冻结 |
+| Volcano `InjectionProvider` live adapter | 未实现 |
+| B7 档位 ①/②/③ 回写本附录 | **未完成**（禁止用 mock 报告冻结 `B12`） |
+
+本仓执行入口见 `fluentwork-backend/docs/04_B14_注入POC执行清单.md`。
+
+---
+
 ## 附录：验证报告模板
 
 ```
