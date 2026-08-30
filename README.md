@@ -55,7 +55,9 @@ docs/
 9. `docs/30_技术方案/33_FluentWork-Prompt工程与语料库设计文档.md`
 10. `docs/50_测试与验收/50_FluentWork端到端注入能力验证文档.md`
 11. `docs/50_测试与验收/51_FluentWork第一波能力验证与第二波薄弱点检查门禁.md`
-12. `docs/60_评审与复盘/60_评审记录-W0.md`
+12. `docs/50_测试与验收/52_FluentWork第一波遗留问题清账与第二波启动前计划.md`
+13. `docs/60_评审与复盘/60_评审记录-W0.md`
+14. `docs/60_评审与复盘/62_FluentWork第一波关闭记录.md`
 
 ## Working Rules
 

@@ -49,18 +49,17 @@
 2. **结构审查层**  
    - commit 前必须跑 `gstack /review`，pre-commit 以 `GSTACK_REVIEWED=1` 声明
 3. **活体验证层**  
-   - backend 已有 `./scripts/dev-up.sh` 本地 smoke 入口
-   - iOS 当前只有 package test，尚未形成挂到 `iPhone 17 Pro` 模拟器的固定 smoke run
+   - backend：`./scripts/dev-up.sh`（开发常驻）+ `./scripts/smoke-review-ready.sh`（第一波放行）
+   - iOS：`./Scripts/smoke-iphone17pro.sh`（`iPhone 17 Pro` 模拟器 smoke）
 4. **owner 判断层**  
    - 高风险目录仍由人类 owner 做最后审批，不由机器替代
 
 ### 当前缺口
 
-当前链路已经具备“审查 + CI + owner”的骨架，但还**不算完整的辩证检查**，原因有三：
+当前链路已经具备“审查 + CI + owner + 第一波活体 smoke”的骨架，但还**不算完整的辩证检查**，原因有二：
 
-1. 检查项更多是“仓库级”，还不是“波次能力级”
-2. 第一波缺少一份统一的放行证据清单
-3. 第二波薄弱点虽然被识别出来了，但还没全部转成阻断式门禁
+1. 检查项更多是“仓库级”，第二波薄弱点门禁仍需按票执行
+2. 第一波关闭后，第二波 Phase 0 / 功能面仍需按门禁编号单独取证
 
 ---
 
@@ -137,7 +136,7 @@
 **现状**：
 
 - `W1-IOS-1`、`W1-IOS-2`：已具备
-- `W1-IOS-3`：**未形成固定门禁**
+- `W1-IOS-3`：已落地（`./Scripts/smoke-iphone17pro.sh` + `docs/06_第一波iPhone17Pro_Smoke_Runbook.md`）
 - `W1-IOS-4`：按高风险改动触发
 
 ### 4.2 Backend 第一波门禁
@@ -152,7 +151,7 @@
 **现状**：
 
 - `W1-BE-1`、`W1-BE-2`、`W1-BE-4`：已具备
-- `W1-BE-3`：当前主要靠单测，不是 live runbook
+- `W1-BE-3`：已落地 live runbook（`./scripts/smoke-review-ready.sh` + `docs/03_第一波_review_ready_Smoke_Runbook.md`）
 
 ### 4.3 跨仓第一波门禁
 
@@ -165,7 +164,21 @@
 
 ---
 
-## 五、第二波薄弱点检查门禁
+## 五、第二波启动前门禁
+
+在进入第二波 Phase 0 或任何功能票之前，先满足下面三项：
+
+| 编号 | 门禁 | 阻断级别 | 所需证据 | 现状 |
+|---|---|---|---|---|
+| W1-START-1 | iOS 第一波最小链路存在 `iPhone 17 Pro` 模拟器 smoke 证据 | 阻断 | runbook / 测试记录 | 已落地：`fluentwork-ios/Scripts/smoke-iphone17pro.sh` |
+| W1-START-2 | backend 第一波最小链路存在 `session.end -> worker -> review ready` live smoke 证据 | 阻断 | runbook / 脚本输出 | 已落地：`fluentwork-backend/scripts/smoke-review-ready.sh` |
+| W1-START-3 | 第一波关闭记录已在 `meta` 收口，明确阻断项已清、非阻断挂账继续保留 | 阻断 | 清账记录文档 | 已落地：`62_FluentWork第一波关闭记录.md` |
+
+对应执行计划见 `52_FluentWork第一波遗留问题清账与第二波启动前计划.md`。
+
+---
+
+## 六、第二波薄弱点检查门禁
 
 这一节把第二波的“薄弱点”转成阻断式检查项。没有证据，不应放行为“完成”。
 
@@ -223,7 +236,7 @@
 
 ---
 
-## 六、执行要求
+## 七、执行要求
 
 从本文生效起，按下面规则执行：
 
@@ -242,17 +255,17 @@
 
 ---
 
-## 七、当前建议的补强动作
+## 八、当前建议的补强动作
 
 按优先级：
 
-1. 给 iOS 增加 `iPhone 17 Pro` 模拟器 smoke runbook，并尽快升到 workflow
-2. 给 backend 增加一条“`session.end -> worker -> review ready`”的一键 smoke runbook
+1. 先完成第一波阻断遗留清账：iOS 模拟器 smoke、backend `review ready` live smoke、`meta` 关闭记录
+2. 再进入第二波 Phase 0：`B14`、`B15`、`I13`
 3. PR 描述补“验收证据”字段，避免只写改动摘要
 4. 第二波每张高风险票都带上本文对应门禁编号，避免实现与检查脱节
 
 ---
 
-## 八、最终口径
+## 九、最终口径
 
-> **FluentWork 当前已经有代码审查、CI 与 owner 审批，但还没有把第一波能力验证和第二波薄弱点检查全部收口成波次级 gate。本文生效后，第一波按能力证据放行，第二波按薄弱点门禁放行。**
+> **FluentWork 当前已经有代码审查、CI 与 owner 审批，但第二波正式启动前，必须先清掉第一波阻断性验证欠账；随后第二波再按薄弱点门禁放行。**
