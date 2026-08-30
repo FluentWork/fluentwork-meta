@@ -325,7 +325,7 @@ Endpoint 已创建；用 Prod API Key 实测：
 
 | 项 | 说明 | 阻断谁 |
 |---|---|---|
-| B14 T9 **同轮音频观测** + 档位回写 | D2（V2）+ D3/T2（V1 ASR 文本）已 PASS；完整窗口 / V3 仍缺 | `B12` 冻结 |
+| B14 T9 窗口 + 档位冻结 | V1/V2 PASS；V3 同轮未过、**下轮 PASS**（档位②线索）；缺 T9 | `B12` 冻结 |
 | `meta` #12 商务三项 | 额度 / 不训练 / 并发 | live 冻结 B12 前 |
 
 > 方舟文本侧：Dev（default）与 Prod（FluentWork-Prod）**六路 Endpoint 均已 smoke PASS**（2026-08-30）。  
