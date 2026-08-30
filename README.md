@@ -54,7 +54,8 @@ docs/
 8. `docs/30_技术方案/32_FluentWork-iOS App端技术设计文档.md`
 9. `docs/30_技术方案/33_FluentWork-Prompt工程与语料库设计文档.md`
 10. `docs/50_测试与验收/50_FluentWork端到端注入能力验证文档.md`
-11. `docs/60_评审与复盘/60_评审记录-W0.md`
+11. `docs/50_测试与验收/51_FluentWork第一波能力验证与第二波薄弱点检查门禁.md`
+12. `docs/60_评审与复盘/60_评审记录-W0.md`
 
 ## Working Rules
 
