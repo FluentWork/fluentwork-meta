@@ -159,11 +159,26 @@ B7 命中检测旁路（B12）
 
 ### 4.2 方舟侧怎么建
 
-1. 项目：`FluentWork-Dev` / `FluentWork-Prod`（可再加 Staging）  
-2. **每个项目一把 API Key**（本地默认用 Dev）  
-3. **Endpoint 必须建在与 Key 相同的项目里**——Key 在 Dev、ep 留在 `default` 会 403/404（已实测）  
-4. Endpoint 按第二节命名，**禁止**所有场景共用一个 ep  
-5. 在 Endpoint 备注里写清：对应 FluentWork issue（如 `B8`）
+**当前 POC / 本地开发口径（已落地）：**
+
+1. 项目：`default`  
+2. API Key：一把 Dev 用 Key（与六个 `fw-*` Endpoint **同属 default**）  
+3. Endpoint：按第二节命名，pro / turbo 分档  
+
+**上线前必须补齐（Prod 待办，勿遗漏）：**
+
+1. 在项目 **`FluentWork-Prod`**（或等价生产项目）创建：  
+   - 生产 API Key 一把  
+   - 同名六路 Endpoint：`fw-review-refine` / `fw-daily-read` / `fw-topic-card` / `fw-hit-match` / `fw-drill-judge` / `fw-text-degrade`  
+   - 模型档位与 Dev 对齐（旗舰 pro / 小模型 turbo）  
+2. 生产环境变量只注入 Prod Key + Prod `ep-`，禁止 Dev Key 打生产流量  
+3. 账单与配额按 Prod 项目单独核算  
+
+纪律：
+
+1. **Key 与 Endpoint 必须同项目**（跨项目会 403/404，已实测）  
+2. **禁止**所有场景共用一个 ep  
+3. Endpoint 备注写清对应 FluentWork issue（如 `B8`）
 
 ### 4.3 密钥落盘（工程）
 
@@ -206,19 +221,24 @@ ARK_EP_TEXT_DEGRADE=ep-...
 
 ### Step B — 豆包语音
 
-1. 打开豆包语音控制台 → **应用管理 → 创建应用**（`FluentWork-Dev`）  
-2. 开通：**端到端实时语音大模型**、**流式语音识别大模型**、**语音合成大模型**  
-3. 复制 `AppID`、`Access Token`、各服务 ResourceId  
-4. 用官方「在线体验 / API 调试」打通一轮最小端到端会话（不经 FluentWork 客户端）  
-5. 把凭证交给 `B14`：`VOLC_POC_*` / gateway 配置  
+1. 打开豆包语音控制台 → 开通端到端 / 流式 ASR / TTS  
+2. 在 **API Key 管理** 创建语音 API Key（新版鉴权：`X-Api-Key`，不需要 AppID / Access Token）  
+3. 记录各服务 ResourceId（TTS 可用 `seed-tts-2.0` 作探针）  
+4. 跑 `./scripts/smoke-volc-speech-creds.sh`；B14 再补 WSS 真会话  
 
-### Step C — 火山方舟
+### Step C — 火山方舟（Dev = default）
 
 1. 控制台进入 **火山方舟**  
-2. **开通管理**：开通旗舰文本模型 + 轻量文本模型各至少一款  
-3. **创建推理接入点**：按第二节表格建 `fw-*`  
-4. **API Key 管理**：创建 `fw-dev` Key  
-5. 用 curl / 官方示例打通 `fw-review-refine` 的一次 JSON 结构化输出  
+2. **开通管理**：开通旗舰（Seed pro）+ 轻量（Seed turbo）  
+3. 在项目 **`default`** 创建六路 `fw-*` 推理接入点  
+4. 在 **`default`** 创建 Dev API Key  
+5. `./scripts/smoke-volc-ark.sh` 六路全绿  
+
+### Step C′ — 火山方舟（Prod，上线前必做）
+
+1. 项目 **`FluentWork-Prod`** 下重建同名六路 Endpoint + 生产 API Key  
+2. 生产密钥进 Secrets，不进 git  
+3. 用 Prod Key 单独跑一遍 smoke（可复用脚本，换 env）  
 
 ### Step D — 回写工程
 
@@ -273,47 +293,46 @@ ARK_EP_TEXT_DEGRADE=ep-...
 
 ## 十、开通核对（2026-08-30 实测）
 
-### 10.1 已对齐的部分（方舟 Endpoint）
+### 10.1 Dev 口径（项目 `default`）
 
-控制台「推理接入点」六项均已创建且健康，档位正确：
+| 项 | 状态 |
+|---|---|
+| 方舟 API Key（default） | 已创建；与 ep 同项目后可调通 |
+| `fw-review-refine` / `fw-daily-read` / `fw-topic-card` | **PASS**（pro） |
+| `fw-hit-match` / `fw-drill-judge` | **PASS**（turbo） |
+| `fw-text-degrade`（`ep-20260830205520-d9c8n`） | **404 NotFound** — 需在 default 下重建该 Endpoint 后再测 |
+| 豆包语音 API Key（`X-Api-Key` + TTS） | **PASS** |
 
-| Endpoint | 模型档位 | 状态 |
-|---|---|---|
-| `fw-review-refine` | Seed-2.1-**pro**（旗舰） | 已建 |
-| `fw-daily-read` | Seed-2.1-**pro** | 已建 |
-| `fw-topic-card` | Seed-2.1-**pro** | 已建 |
-| `fw-hit-match` | Seed-2.1-**turbo**（小/快） | 已建 |
-| `fw-drill-judge` | Seed-2.1-**turbo** | 已建 |
-| `fw-text-degrade` | Seed-2.1-**turbo** | 已建 |
+### 10.2 Prod 待办（上线前必须完成，当前未做）
 
-### 10.2 第二波开写前仍缺 / 易混项
+在项目 **`FluentWork-Prod`** 创建并验收：
+
+1. 生产 API Key 一把  
+2. 同名六路 Endpoint（档位与 Dev 一致）  
+3. 用 Prod 环境变量跑通 `./scripts/smoke-volc-ark.sh`  
+4. 语音生产 Key / 配额与 Dev 隔离（可另建语音生产 Key）  
+
+未完成前：**不得**把 default / Dev 凭证配进生产部署。
+
+### 10.3 第二波开写前仍缺
 
 | 项 | 说明 | 阻断谁 |
 |---|---|---|
-| **方舟 API Key ≠ 豆包语音 API Key** | 用语音侧 Key 调 `ark.../chat/completions` 会 401 `The API key doesn't exist`（已实测） | `B8`/`B11`/`B12` |
-| 豆包语音 **AppID + Access Token**（或确认新版仅 API Key 的官方口径） | 仅有一把语音 API Key 不够对接经典 WSS；到「应用管理」抄 AppID | `B13`/`B14` |
-| 语音各服务 **ResourceId** | 端到端 / ASR / TTS 调用路径区分用 | `B13`/`B14` |
-| `meta` #12 商务三项 | 额度算账 / 不训练条款 / 并发配额 | live 冻结 B12 档位前 |
-| 端到端 **WSS 真会话** 一次 | curl 测不了全双工；需按 doc 50 跑 T1+ | `B14` |
+| 重建 `fw-text-degrade` | 当前 ep 404 | 文本降级真模型接线 |
+| 语音 RTC / ASR ResourceId | TTS 已通；端到端 WSS 仍要用 | `B13`/`B14` |
+| `meta` #12 商务三项 | 额度 / 不训练 / 并发 | live 冻结 B12 前 |
+| 端到端 WSS 真会话 | TTS HTTP ≠ realtime | `B14` |
+| **Prod 方舟全套** | 见 10.2 | 生产发布 |
 
-### 10.3 建议立刻做的连通性测试
+### 10.4 连通性测试
 
 ```bash
 cd fluentwork-backend
 cp configs/volc.env.example .env.volc.local
-# 编辑：填入「火山方舟 → API Key 管理」的 Key，以及截图里的 ep-（example 已预填）
+# ARK_PROJECT=default；填 default 项目的 ARK_API_KEY + ep-；VOLC_SPEECH_API_KEY
 set -a && source .env.volc.local && set +a
 ./scripts/smoke-volc-ark.sh
 ./scripts/smoke-volc-speech-creds.sh
 ```
 
-方舟单条手工 curl：
-
-```bash
-curl https://ark.cn-beijing.volces.com/api/v3/chat/completions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ARK_API_KEY" \
-  -d '{"model":"ep-20260830205333-prddb","messages":[{"role":"user","content":"Reply with exactly: PONG"}],"max_tokens":16}'
-```
-
-安全：API Key 勿贴进聊天 / 勿提交 git；若已泄露请在控制台轮换。
+安全：API Key 勿贴进聊天 / 勿提交 git；若已泄露请轮换。
