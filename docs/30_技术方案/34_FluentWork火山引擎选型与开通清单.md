@@ -325,11 +325,11 @@ Endpoint 已创建；用 Prod API Key 实测：
 
 | 项 | 说明 | 阻断谁 |
 |---|---|---|
-| 端到端语音 **WSS 真会话** | Key + 开通已齐；TTS HTTP ≠ realtime 注入能力 | `B13`/`B14` |
+| B14 T9 **同轮音频观测** + 档位回写 | D2 duplex（`session.create`/`session.update`）已 PASS；完整窗口仍缺 | `B12` 冻结 |
 | `meta` #12 商务三项 | 额度 / 不训练 / 并发 | live 冻结 B12 前 |
 
 > 方舟文本侧：Dev（default）与 Prod（FluentWork-Prod）**六路 Endpoint 均已 smoke PASS**（2026-08-30）。  
-> 豆包语音侧：新版 **只接 API Key**；控制台实例名不进工程必填配置。
+> 豆包语音侧：新版 **只接 API Key**；B14 D2 走全双工 `wss://…/api/v3/duplex/realtime/dialogue`（JSON 事件，`session.update` = 注入通道）。
 
 ### 10.4 连通性测试
 
