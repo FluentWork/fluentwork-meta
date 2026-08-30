@@ -106,9 +106,21 @@ B7（对话中命中已练话术块的即时反馈）是产品差异化的核心
 | 项 | 状态 |
 |---|---|
 | T9 窗口测量脚手架（backend `internal/voicepoc` + `cmd/poc-injection-window`） | 已落地；mock 路径可重复跑 |
-| 火山 POC 凭证 / meta #12 PREREQ | **未闭环** → live 档位结论不可冻结 |
-| Volcano `InjectionProvider` live adapter | 未实现 |
-| B7 档位 ①/②/③ 回写本附录 | **未完成**（禁止用 mock 报告冻结 `B12`） |
+| Live duplex adapter（`OpenDuplex` / ASR / inject / T9） | **已落地**；见 backend `docs/04`–`09` |
+| 火山 POC 凭证 | Dev 语音 API Key 已通；**meta #12 商务三项未闭环** |
+| B7 档位 ①/②/③ | **工程冻结候选 = ②**（live T9：同轮 0/5，下轮 5/5；每档 1 次）。生产法务冻结仍待 #12 |
+
+### 7.1 附录：B14 live 验证速记（2026-08-30）
+
+1. **结论档位（能力）**：倾向 **A 的降配确认时机**（端到端主链路保留；B7 确认走下轮）— 非结论 C。  
+2. **V1** ASR 文本：PASS（`conversation.item.input_audio_transcription.*`）  
+3. **V2** 中途注入通道：PASS（`session.update`）  
+4. **V3** 同轮生效：FAIL；下轮生效：PASS  
+5. **V8/T9**：同轮窗口空；档位 **②**  
+6. **关键证据**：backend `./scripts/smoke-volc-realtime.sh --t9` 报告；实现说明 `docs/09_B14_T9_注入窗口实现说明.md`  
+7. **遗留**：#12 PREREQ；可选 `VOLC_T9_TRIALS=6`；V4/V5 大样本；V6/V7 若要冲当轮再开  
+
+签字栏：技术负责人 / 日期 ________
 
 本仓执行入口见 `fluentwork-backend/docs/04_B14_注入POC执行清单.md`。
 
