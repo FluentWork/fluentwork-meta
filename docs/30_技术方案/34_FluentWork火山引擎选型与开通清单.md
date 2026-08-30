@@ -14,7 +14,7 @@ FluentWork 在火山侧是 **「豆包语音 + 火山方舟」双控制台**：
 
 | 控制台 | 解决什么 | 产出凭证 | 谁用 |
 |---|---|---|---|
-| **豆包语音**（Speech） | 实时听/说：端到端对话、流式 ASR、流式 TTS | **API Key**（新版控制台；请求头 `X-Api-Key`，不再使用 AppID / Access Token）+ 各服务 ResourceId | `voice-gateway`（`B13`/`B14`）、模块化降级链路 |
+| **豆包语音**（Speech） | 实时听/说：端到端对话、流式 ASR、流式 TTS | **API Key**（新版控制台；请求头 `X-Api-Key`；不再使用 AppID / Access Token） | `voice-gateway`（`B13`/`B14`）、模块化降级链路 |
 | **火山方舟**（Ark） | 文本大模型：评价/炼化/每日一读/命中匹配等 | `API Key`（`ark-…`）+ 各场景 `Endpoint ID`（`ep-…`）；**Key 与 Endpoint 须同项目** | `app-server` / `ai-worker`（`B8`/`B11`/`B12`） |
 
 
@@ -62,7 +62,9 @@ B7 命中检测旁路（B12）
 | 录音文件识别（可选） | 会话结束后补转写兜底（非主路径） | 后续优化 | P2 |
 | 发音评测类能力（若控制台有） | **V1.1 再开**，MVP 不做 | 后置 | 不做 |
 
-同一应用下用 **API Key（`X-Api-Key`）** 鉴权即可覆盖端到端 + 流式 ASR + TTS；调用时用不同 **ResourceId / 接口路径** 区分服务（以官方 API 文档为准）。本项目口径不再依赖 AppID / Access Token。
+**新版口径（官方已修正）：鉴权只靠 API Key（`X-Api-Key`）**，覆盖端到端 / 流式 ASR / TTS；**不再依赖 AppID / Access Token**。  
+控制台里的「实例名」是开通/计费记录，**不是**工程必填凭证；端到端实时语音建连文档（新版）只需 `X-Api-Key` + `X-Api-Request-Id`。  
+少数子接口（如部分 TTS / 流式 ASR）若文档仍要求 `X-Api-Resource-Id`，使用官方**产品级 SKU**（如 `seed-tts-2.0`、`volc.seedasr.sauc.duration`），**不要**把控制台实例名长串当 ResourceId。
 
 端到端选型注意（对接 `B14`）：
 
@@ -144,14 +146,14 @@ B7 命中检测旁路（B12）
 
 ### 4.1 豆包语音怎么建
 
-新版按 **API Key + 开通服务** 管理即可（不再建 AppID/Token 应用对）。
+新版按 **API Key + 开通服务** 管理即可（不再建 AppID/Token；**工程接线以 Key 为准，不强制落 ResourceId / 实例名**）。
 
-| Key 用途 | 环境 | 说明 |
-|---|---|---|
-| 语音 Dev Key | 本地 / POC / 内测 | `B14`、gateway 联调 |
-| 语音 Prod Key | 生产 | 上线前单独创建，与 Dev 隔离 |
+| Key 用途 | 环境 | 控制台 Key 名（2026-08-30） | 说明 |
+|---|---|---|---|
+| 语音 Dev / default | 本地 / POC / 内测 | `api-key-20260830213945` | `B14`、gateway 联调；写入 `VOLC_SPEECH_API_KEY(_DEV)` |
+| 语音 Prod | 生产 | `api-key-20260830213853` | 与 Dev 隔离；写入 `VOLC_SPEECH_API_KEY_PROD` |
 
-每把 Key 旁记录：已开通服务列表、各 ResourceId、所属项目/账单标签。
+开通记录（便于对账，非 env 必填）：端到端实例、流式 ASR 实例已在控制台创建。每把 Key 旁记录已开通服务列表即可。
 
 ### 4.2 方舟侧怎么建
 
@@ -180,13 +182,14 @@ B7 命中检测旁路（B12）
 建议环境变量（名称可微调，但语义固定）：
 
 ```text
-# 豆包语音（gateway）— 新版仅 API Key
-VOLC_SPEECH_API_KEY=
-VOLC_SPEECH_RESOURCE_RTC=
-VOLC_SPEECH_RESOURCE_ASR=
-VOLC_SPEECH_RESOURCE_TTS=seed-tts-2.0
+# 豆包语音（gateway）— 新版仅 API Key（必填）；不强制 ResourceId / 实例名
+VOLC_SPEECH_API_KEY=          # 本地默认 Dev
+VOLC_SPEECH_API_KEY_DEV=
+VOLC_SPEECH_API_KEY_PROD=
+# 可选：仅当 TTS/ASR 子接口文档仍要求产品级 X-Api-Resource-Id 时再填
+# VOLC_SPEECH_RESOURCE_TTS=seed-tts-2.0
 
-# B14 POC 直连（可与上共用语音 Key）
+# B14 POC 直连（可与 Dev 语音 Key 共用）
 VOLC_POC_API_KEY=
 
 # 火山方舟（worker / app-server）— Key 与 ep 同项目
@@ -217,9 +220,9 @@ ARK_EP_TEXT_DEGRADE=ep-...
 ### Step B — 豆包语音
 
 1. 打开豆包语音控制台 → 开通端到端 / 流式 ASR / TTS  
-2. 在 **API Key 管理** 创建语音 API Key（新版鉴权：`X-Api-Key`，不需要 AppID / Access Token）  
-3. 记录各服务 ResourceId（TTS 可用 `seed-tts-2.0` 作探针）  
-4. 跑 `./scripts/smoke-volc-speech-creds.sh`；B14 再补 WSS 真会话  
+2. 在 **API Key 管理** 创建语音 API Key（新版鉴权：仅 `X-Api-Key`）  
+3. Dev / Prod 各一把 Key 写入服务端 Secrets（**无需**把控制台实例名写进工程配置）  
+4. 跑 `./scripts/smoke-volc-speech-creds.sh`；B14 再补端到端 WSS 真会话  
 
 ### Step C — 火山方舟（Dev = default）
 
@@ -299,7 +302,9 @@ ARK_EP_TEXT_DEGRADE=ep-...
 | `fw-hit-match` | `ep-20260830205333-prddb`（turbo） | PASS |
 | `fw-drill-judge` | `ep-20260830205423-xg4pd`（turbo） | PASS |
 | `fw-text-degrade` | `ep-20260830205520-d9d8n`（turbo） | PASS |
-| 豆包语音 API Key | `X-Api-Key` + TTS | PASS |
+| 豆包语音 Dev Key | `api-key-20260830213945`（`X-Api-Key`） | 已建；Key 已校正 |
+| 豆包语音 Prod Key | `api-key-20260830213853` | 已建；Key 本身有效；TTS SKU 未授权（403，不影响端到端主路径） |
+| 端到端 / 流式 ASR | 控制台已开通（实例名仅对账，**不进工程必填**） | 开通齐；WSS 待 B14 |
 
 ### 10.2 Prod（项目 `FluentWork-Prod`）
 
@@ -320,10 +325,11 @@ Endpoint 已创建；用 Prod API Key 实测：
 
 | 项 | 说明 | 阻断谁 |
 |---|---|---|
-| 语音 RTC / ASR ResourceId + WSS | TTS HTTP 已通 ≠ realtime | `B13`/`B14` |
+| 端到端语音 **WSS 真会话** | Key + 开通已齐；TTS HTTP ≠ realtime 注入能力 | `B13`/`B14` |
 | `meta` #12 商务三项 | 额度 / 不训练 / 并发 | live 冻结 B12 前 |
 
-> 方舟文本侧：Dev（default）与 Prod（FluentWork-Prod）**六路 Endpoint 均已 smoke PASS**（2026-08-30）。
+> 方舟文本侧：Dev（default）与 Prod（FluentWork-Prod）**六路 Endpoint 均已 smoke PASS**（2026-08-30）。  
+> 豆包语音侧：新版 **只接 API Key**；控制台实例名不进工程必填配置。
 
 ### 10.4 连通性测试
 
