@@ -158,17 +158,16 @@ B7 命中检测旁路（B12）
 **当前 POC / 本地开发口径（已落地）：**
 
 1. 项目：`default`  
-2. API Key：一把 Dev 用 Key（与六个 `fw-*` Endpoint **同属 default**）  
-3. Endpoint：按第二节命名，pro / turbo 分档  
+2. API Key：Dev 用 Key（与 default 下 `fw-*` Endpoint 同项目）  
+3. Endpoint：见第十节「Dev 清单」  
 
-**上线前必须补齐（Prod 待办，勿遗漏）：**
+**生产口径（Endpoint 已建，连通性部分待修）：**
 
-1. 在项目 **`FluentWork-Prod`**（或等价生产项目）创建：  
-   - 生产 API Key 一把  
-   - 同名六路 Endpoint：`fw-review-refine` / `fw-daily-read` / `fw-topic-card` / `fw-hit-match` / `fw-drill-judge` / `fw-text-degrade`  
-   - 模型档位与 Dev 对齐（旗舰 pro / 小模型 turbo）  
-2. 生产环境变量只注入 Prod Key + Prod `ep-`，禁止 Dev Key 打生产流量  
-3. 账单与配额按 Prod 项目单独核算  
+1. 项目：`FluentWork-Prod`  
+2. API Key：Prod 专用 Key（已创建）  
+3. Endpoint：六路已创建（见第十节「Prod 清单」）；其中 `fw-review-refine` / `fw-drill-judge` 实测仍 404，需在控制台核对 ID 或重建  
+4. 生产环境变量只注入 Prod Key + Prod `ep-`，**禁止** default Key 打生产流量  
+5. 账单与配额按 Prod 项目单独核算  
 
 纪律：
 
@@ -289,43 +288,50 @@ ARK_EP_TEXT_DEGRADE=ep-...
 
 ## 十、开通核对（2026-08-30 实测）
 
-### 10.1 Dev 口径（项目 `default`）
+### 10.1 Dev / POC（项目 `default`）
 
-| 项 | 状态 |
-|---|---|
-| 方舟 API Key（default） | 已创建；与 ep 同项目后可调通 |
-| `fw-review-refine` / `fw-daily-read` / `fw-topic-card` | **PASS**（pro） |
-| `fw-hit-match` / `fw-drill-judge` | **PASS**（turbo） |
-| `fw-text-degrade`（`ep-20260830205520-d9c8n`） | **404 NotFound** — 需在 default 下重建该 Endpoint 后再测 |
-| 豆包语音 API Key（`X-Api-Key` + TTS） | **PASS** |
+| 项 | ID / 说明 | 连通 |
+|---|---|---|
+| API Key | default 项目 Key（本地 `ARK_API_KEY` / `ARK_API_KEY_DEV`） | 有效 |
+| `fw-review-refine` | `ep-20260830204651-pffhf`（pro） | PASS |
+| `fw-daily-read` | `ep-20260830204818-8kdfr`（pro） | PASS |
+| `fw-topic-card` | `ep-20260830204912-wtjw9`（pro） | PASS |
+| `fw-hit-match` | `ep-20260830205333-prddb`（turbo） | PASS |
+| `fw-drill-judge` | `ep-20260830205423-xg4pd`（turbo） | PASS |
+| `fw-text-degrade` | 旧 `ep-…-d9c8n` **404** — 需在 default **重建** 后回填 | 待修 |
+| 豆包语音 API Key | `X-Api-Key` + TTS | PASS |
 
-### 10.2 Prod 待办（上线前必须完成，当前未做）
+### 10.2 Prod（项目 `FluentWork-Prod`）
 
-在项目 **`FluentWork-Prod`** 创建并验收：
+Endpoint 已创建；用 Prod API Key 实测：
 
-1. 生产 API Key 一把  
-2. 同名六路 Endpoint（档位与 Dev 一致）  
-3. 用 Prod 环境变量跑通 `./scripts/smoke-volc-ark.sh`  
-4. 语音生产 Key / 配额与 Dev 隔离（可另建语音生产 Key）  
+| Endpoint | ID | 模型 | 连通 |
+|---|---|---|---|
+| `fw-review-refine` | `ep-20260830211617-26d79` | pro | PASS |
+| `fw-daily-read` | `ep-20260830211650-vkdj2` | pro | PASS |
+| `fw-topic-card` | `ep-20260830211715-q79x9` | pro | PASS |
+| `fw-hit-match` | `ep-20260830211747-vwtrb` | turbo | PASS |
+| `fw-drill-judge` | `ep-20260830211815-pmkg8`（请在控制台再核对后缀） | turbo | **404 待修** |
+| `fw-text-degrade` | `ep-20260830211850-pf2ts` | turbo | PASS |
 
-未完成前：**不得**把 default / Dev 凭证配进生产部署。
+纪律：生产只注入 Prod Key + 上表 Prod `ep-`；**禁止**用 default Key 打 Prod Endpoint。
 
 ### 10.3 第二波开写前仍缺
 
 | 项 | 说明 | 阻断谁 |
 |---|---|---|
-| 重建 `fw-text-degrade` | 当前 ep 404 | 文本降级真模型接线 |
-| 语音 RTC / ASR ResourceId | TTS 已通；端到端 WSS 仍要用 | `B13`/`B14` |
+| default 重建 `fw-text-degrade` | Dev 六路全绿前必做 | 本地文本降级 |
+| Prod 修复 `fw-drill-judge` | 控制台复制精确 `ep-` 或重建 | 生产闪测判定 |
+| 语音 RTC / ASR ResourceId + WSS | TTS HTTP 已通 ≠ realtime | `B13`/`B14` |
 | `meta` #12 商务三项 | 额度 / 不训练 / 并发 | live 冻结 B12 前 |
-| 端到端 WSS 真会话 | TTS HTTP ≠ realtime | `B14` |
-| **Prod 方舟全套** | 见 10.2 | 生产发布 |
 
 ### 10.4 连通性测试
 
 ```bash
 cd fluentwork-backend
 cp configs/volc.env.example .env.volc.local
-# ARK_PROJECT=default；填 default 项目的 ARK_API_KEY + ep-；VOLC_SPEECH_API_KEY
+# Dev：ARK_PROJECT=default + ARK_API_KEY_DEV + default 的 ep-
+# Prod：ARK_PROJECT=FluentWork-Prod + ARK_API_KEY_PROD + 10.2 的 ep-
 set -a && source .env.volc.local && set +a
 ./scripts/smoke-volc-ark.sh
 ./scripts/smoke-volc-speech-creds.sh
