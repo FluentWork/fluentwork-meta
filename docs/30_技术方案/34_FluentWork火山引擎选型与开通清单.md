@@ -265,3 +265,52 @@ ARK_EP_TEXT_DEGRADE=ep-...
 ## 九、一句话给执行同学
 
 > **语音开「豆包语音」一个 Dev 应用（端到端 + 流式 ASR + TTS）；文本开「火山方舟」两档模型（旗舰给评价炼化，小模型给 B7）；凭证只进服务端。先把这套开齐，Phase 0 的 B14/B13 和后面的 B8/B12 才有地方接。**
+
+---
+
+## 十、开通核对（2026-08-30 实测）
+
+### 10.1 已对齐的部分（方舟 Endpoint）
+
+控制台「推理接入点」六项均已创建且健康，档位正确：
+
+| Endpoint | 模型档位 | 状态 |
+|---|---|---|
+| `fw-review-refine` | Seed-2.1-**pro**（旗舰） | 已建 |
+| `fw-daily-read` | Seed-2.1-**pro** | 已建 |
+| `fw-topic-card` | Seed-2.1-**pro** | 已建 |
+| `fw-hit-match` | Seed-2.1-**turbo**（小/快） | 已建 |
+| `fw-drill-judge` | Seed-2.1-**turbo** | 已建 |
+| `fw-text-degrade` | Seed-2.1-**turbo** | 已建 |
+
+### 10.2 第二波开写前仍缺 / 易混项
+
+| 项 | 说明 | 阻断谁 |
+|---|---|---|
+| **方舟 API Key ≠ 豆包语音 API Key** | 用语音侧 Key 调 `ark.../chat/completions` 会 401 `The API key doesn't exist`（已实测） | `B8`/`B11`/`B12` |
+| 豆包语音 **AppID + Access Token**（或确认新版仅 API Key 的官方口径） | 仅有一把语音 API Key 不够对接经典 WSS；到「应用管理」抄 AppID | `B13`/`B14` |
+| 语音各服务 **ResourceId** | 端到端 / ASR / TTS 调用路径区分用 | `B13`/`B14` |
+| `meta` #12 商务三项 | 额度算账 / 不训练条款 / 并发配额 | live 冻结 B12 档位前 |
+| 端到端 **WSS 真会话** 一次 | curl 测不了全双工；需按 doc 50 跑 T1+ | `B14` |
+
+### 10.3 建议立刻做的连通性测试
+
+```bash
+cd fluentwork-backend
+cp configs/volc.env.example .env.volc.local
+# 编辑：填入「火山方舟 → API Key 管理」的 Key，以及截图里的 ep-（example 已预填）
+set -a && source .env.volc.local && set +a
+./scripts/smoke-volc-ark.sh
+./scripts/smoke-volc-speech-creds.sh
+```
+
+方舟单条手工 curl：
+
+```bash
+curl https://ark.cn-beijing.volces.com/api/v3/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $ARK_API_KEY" \
+  -d '{"model":"ep-20260830205333-prddb","messages":[{"role":"user","content":"Reply with exactly: PONG"}],"max_tokens":16}'
+```
+
+安全：API Key 勿贴进聊天 / 勿提交 git；若已泄露请在控制台轮换。
