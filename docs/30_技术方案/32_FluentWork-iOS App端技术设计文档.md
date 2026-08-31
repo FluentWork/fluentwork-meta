@@ -240,7 +240,7 @@ AudioEngine 对外只暴露协议 `AudioEngineProtocol`（start/stop/playChunk/i
 
 ### 4.2 帧处理
 
-- 控制帧（JSON，Codable）：`session.start` / `user.speech.start|end` / `ai.text.delta` / `ai.audio.chunk` / `ai.turn.end` / `interrupt` / `feedback.badge` / `session.end`——与后端契约测试共用同一 schema（防静默变更）；
+- 控制帧（JSON，Codable）：`session.start` / `user.speech.start|end` / `ai.text.delta` / `ai.audio.chunk` / `ai.turn.end` / `interrupt` / `feedback.badge` / `session.end`——与后端契约测试共用同一 schema（防静默变更），schema source of truth 现位于 `fluentwork-infra/schemas/transport/wss-control-frames-v1.json`；
 - 音频帧：二进制 Opus，20ms 帧，每帧携带**服务端递增序列号**；
 - **打断丢帧规则**：本地记录打断时刻的"当前最大序列号"，此后到达的、序列号 ≤ 该值的音频帧直接丢弃——解决"打断时 TTS 流仍在下发"的竞态（技术方案 2.4）；该逻辑独立成纯函数，单测覆盖边界（相等、回绕不存在、空队列）；
 - `ai.text.delta` 流式拼接进当前 AI 气泡；`feedback.badge` **不进状态机 reducer**，由 Transport 直接 `dispatch(.feedback(.badgeHit))` 触发徽章展示状态更新（1.4.4）。
