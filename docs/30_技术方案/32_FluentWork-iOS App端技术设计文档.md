@@ -172,7 +172,7 @@ idle ─► connecting ─► aiSpeaking ⇄ waitingUser ⇄ recording
 |---|---|---|
 | `sessionStartTap` | UI | idle → connecting，调 `POST /sessions` 取票据 |
 | `socketReady` | Transport | connecting → aiSpeaking（AI 开场白） |
-| `aiAudioEnd` | Transport | aiSpeaking → waitingUser |
+| `aiTurnEnd` | Transport | processing / aiSpeaking → waitingUser |
 | `vadSpeechStart` / `holdStart` | AudioEngine / UI | waitingUser → recording；**若当前 aiSpeaking：触发打断事件** |
 | `vadSpeechEnd` / `holdEnd` | AudioEngine / UI | recording → processing |
 | `aiFirstAudioChunk` | Transport | processing → aiSpeaking |
@@ -186,7 +186,7 @@ idle ─► connecting ─► aiSpeaking ⇄ waitingUser ⇄ recording
 
 - 实现为 `reduce(state, event) -> (state, [SideEffect])`，副作用（发送 interrupt、停播、上报）由 SpeechSessionClient 解释执行——状态机本身零 IO，可完全离线单测；
 - 该 reducer 以**子 reducer** 形态挂载根 Store（1.4）：`SpeechSessionEvent` 经 Action 包装后进入统一 dispatch 流，SideEffect 由 SpeechSession Middleware 解释执行——**纯函数契约、事件表、单测矩阵全部不变**；
-- **单测硬要求**：状态 × 事件矩阵全覆盖（含非法组合的忽略行为）、打断竞态序列（`vadSpeechStart` 与 `aiAudioEnd` 交错到达）、重连窗口内的重复 `socketReady` 幂等；
+- **单测硬要求**：状态 × 事件矩阵全覆盖（含非法组合的忽略行为）、打断竞态序列（`vadSpeechStart` 与 `aiTurnEnd` 交错到达）、重连窗口内的重复 `socketReady` 幂等；
 - 所有状态迁移发埋点（状态对 + 耗时），W1-W2 压测与内测 badcase 归档共用此数据。
 
 ---
@@ -240,7 +240,7 @@ AudioEngine 对外只暴露协议 `AudioEngineProtocol`（start/stop/playChunk/i
 
 ### 4.2 帧处理
 
-- 控制帧（JSON，Codable）：`session.start` / `user.speech.start|end` / `ai.text.delta` / `ai.audio.chunk` / `interrupt` / `feedback.badge` / `session.end`——与后端契约测试共用同一 schema（防静默变更）；
+- 控制帧（JSON，Codable）：`session.start` / `user.speech.start|end` / `ai.text.delta` / `ai.audio.chunk` / `ai.turn.end` / `interrupt` / `feedback.badge` / `session.end`——与后端契约测试共用同一 schema（防静默变更）；
 - 音频帧：二进制 Opus，20ms 帧，每帧携带**服务端递增序列号**；
 - **打断丢帧规则**：本地记录打断时刻的"当前最大序列号"，此后到达的、序列号 ≤ 该值的音频帧直接丢弃——解决"打断时 TTS 流仍在下发"的竞态（技术方案 2.4）；该逻辑独立成纯函数，单测覆盖边界（相等、回绕不存在、空队列）；
 - `ai.text.delta` 流式拼接进当前 AI 气泡；`feedback.badge` **不进状态机 reducer**，由 Transport 直接 `dispatch(.feedback(.badgeHit))` 触发徽章展示状态更新（1.4.4）。
