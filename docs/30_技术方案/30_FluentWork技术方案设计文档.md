@@ -68,7 +68,7 @@
 
 WebSocket，二进制音频帧 + JSON 控制帧：
 
-- 控制帧：`session.start`（携带素材上下文/场景/音色配置）、`user.speech.start/end`、`ai.text.delta`、`ai.audio.chunk`、`ai.turn.end`、`interrupt`、`feedback.badge`（B7 命中通知）、`session.end`；
+- 控制帧：`session.start`（携带素材上下文/场景/音色配置）、`user.speech.start/end`、`ai.text.delta`、`ai.audio.chunk`、`ai.turn.end`、`interrupt`、`feedback.badge`（B7 命中通知）、`session.end`；主 schema 治理入口位于 `fluentwork-infra`，canonical 文件为 `schemas/transport/wss-control-frames-v1.json`；
 - 音频帧：Opus 编码，20ms 帧；
 - 序列号机制：所有 AI 音频帧带递增序列号，打断时客户端丢弃序号早于打断点的帧（解决"打断时 TTS 流仍在下发"的竞态）。
 
