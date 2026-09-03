@@ -50,15 +50,19 @@ docs/
 4. `docs/20_产品设计/20_FluentWork产品需求文档PRD.md`
 5. `docs/20_产品设计/21_FluentWork界面设计文档.md`
 6. `docs/30_技术方案/30_FluentWork技术方案设计文档.md`
-7. `docs/30_技术方案/31_FluentWork后端技术方案文档.md`
+7. `docs/30_技术方案/31_FluentWork后端技术方案文档.md`（V1.2 设计基线）
 8. `docs/30_技术方案/32_FluentWork-iOS App端技术设计文档.md`
 9. `docs/30_技术方案/33_FluentWork-Prompt工程与语料库设计文档.md`
 10. `docs/30_技术方案/34_FluentWork火山引擎选型与开通清单.md`
-11. `docs/50_测试与验收/50_FluentWork端到端注入能力验证文档.md`
-12. `docs/50_测试与验收/51_FluentWork第一波能力验证与第二波薄弱点检查门禁.md`
-13. `docs/50_测试与验收/52_FluentWork第一波遗留问题清账与第二波启动前计划.md`
-14. `docs/60_评审与复盘/60_评审记录-W0.md`
-15. `docs/60_评审与复盘/62_FluentWork第一波关闭记录.md`
+11. `docs/30_技术方案/39_FluentWork后端技术架构设计V2_0_2026-09-03.md`（**V2.0 架构新增 LLM 编排 / TTS / 闪测三模块**）
+12. `docs/40_研发流程与协作/53_FluentWork_V2_0启动前待办清单_2026-09-03.md`（**V2.0 实施前的硬阻塞、软阻塞、Issue 拆分**）
+13. `docs/50_测试与验收/50_FluentWork端到端注入能力验证文档.md`
+14. `docs/50_测试与验收/51_FluentWork第一波能力验证与第二波薄弱点检查门禁.md`
+15. `docs/50_测试与验收/52_FluentWork第一波遗留问题清账与第二波启动前计划.md`
+16. `docs/50_测试与验收/56_FluentWork第二波PRD对照检查与收口评估_2026-09-03.md`（**第二波收口评估，含 V2.0 缺口分析**）
+17. `docs/60_评审与复盘/65_FluentWork_说读炼化闪测语料库_闭环状态收口报告_2026-09-03.md`（**五环节完成度 + 阻塞根因 + 后续计划**）
+18. `docs/60_评审与复盘/60_评审记录-W0.md`
+19. `docs/60_评审与复盘/62_FluentWork第一波关闭记录.md`
 
 
 ## Working Rules
@@ -85,7 +89,11 @@ docs/
 
 ## Next Initialization Targets
 
-- add issue templates
-- add PR template
-- add CODEOWNERS for meta
-- expand document and workflow checks
+- [ ] V2.0 五项开放技术决策拍板（D-1 ~ D-5，详见 `40_研发流程与协作/53_`）
+- [ ] 火山 Ark LLM + TTS 凭证申请（W2 末必须到位）
+- [ ] 18 个 V2.0 一级 Issue 在三仓建立（参考 `40_研发流程与协作/52_` 模式）
+- [ ] V2.0 数据库迁移脚本入库（drill_records 等）
+- [ ] add issue templates
+- [ ] add PR template
+- [ ] add CODEOWNERS for meta
+- [ ] expand document and workflow checks
