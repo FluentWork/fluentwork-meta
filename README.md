@@ -1,105 +1,187 @@
-# FluentWork Meta
+# fluentwork-meta — V2.0 启动包总索引
 
-`fluentwork-meta` is the governance and specification repository for FluentWork.
+> **文档版本**：V1.0　**日期**：2026-09-06　**性质**：跨仓启动包归档与门禁对齐
+> **作用**：把 W3 / W4 的 18 份启动包文档（2 索引 + 16 Issue 草稿）按仓库分组 + 启动顺序归档，供 W3 启动日（9/10）建仓 GitHub Issue 一站式检索
 
-GitHub 组织已建立：
+---
 
-- `https://github.com/FluentWork`
+## 一、归档结构
 
-已初始化仓库：
-
-- `https://github.com/FluentWork/fluentwork-meta`
-- `https://github.com/FluentWork/fluentwork-ios`
-- `https://github.com/FluentWork/fluentwork-backend`
-- `https://github.com/FluentWork/fluentwork-infra`
-
-当前本地仓库 remote：
-
-- `git@github.com:FluentWork/fluentwork-meta.git`
-
-## Purpose
-
-This repository stores the project's shared source of truth:
-
-- product requirements
-- UX and interaction design
-- architecture and ADRs
-- roadmap and milestone planning
-- review records and release gates
-- shared agent policy and templates
-- GitHub workflow conventions for the FluentWork organization
-
-## 目录
-
-```text
-docs/
-├── 10_项目治理/
-├── 20_产品设计/
-├── 30_技术方案/
-├── 40_研发流程与协作/
-├── 50_测试与验收/
-├── 60_评审与复盘/
-└── 70_外部研究/
+```
+fluentwork-meta/docs/40_研发流程与协作/
+├── 53_  待办清单 V1.2（含 16/18 启动包就绪盘点）         ← 门禁对齐
+├── 55_  backend W3 启动包索引                            ← 后端索引
+├── 56_  B17 TTS Provider 草稿                            ← 后端 8 草稿
+├── 57_  B19 B7 命中注入 草稿
+├── 58_  B22 闪测+A4 隐私 草稿
+├── 59_  B25 F3 收藏置顶 草稿
+├── 69_  B18 review eval 草稿
+├── 70_  B21 素材模块 草稿
+├── 71_  B23 话题卡生成 草稿
+├── 72_  B24 历史回顾 API 草稿
+├── 60_  iOS W3-W4 启动包索引                            ← 前端索引
+├── 61_  I14 创建练习弹层 草稿                           ← 前端 8 草稿
+├── 62_  I15 TTS 播放集成 草稿
+├── 63_  I16 完整转录浮层 草稿
+├── 64_  I17 闪测 UI 草稿
+├── 65_  I18 话题卡 UI 草稿
+├── 66_  I19 历史回顾列表 草稿
+├── 67_  I20 Prompt 工程师接入 草稿
+└── 68_  I21 状态机子状态扩展 草稿
 ```
 
-## 阅读顺序
+**总计 18 份文档**：2 份索引 + 8 份 backend 草稿 + 8 份 iOS 草稿
 
-1. `docs/10_项目治理/10_FluentWork项目启动书.md`
-2. `docs/10_项目治理/11_FluentWork团队分工文档.md`
-3. `docs/10_项目治理/12_FluentWork-AI协作开源研发与CI-CD方案.md`
-4. `docs/20_产品设计/20_FluentWork产品需求文档PRD.md`
-5. `docs/20_产品设计/21_FluentWork界面设计文档.md`
-6. `docs/30_技术方案/30_FluentWork技术方案设计文档.md`
-7. `docs/30_技术方案/31_FluentWork后端技术方案文档.md`（V1.2 设计基线）
-8. `docs/30_技术方案/32_FluentWork-iOS App端技术设计文档.md`
-9. `docs/30_技术方案/33_FluentWork-Prompt工程与语料库设计文档.md`
-10. `docs/30_技术方案/34_FluentWork火山引擎选型与开通清单.md`
-11. `docs/30_技术方案/39_FluentWork后端技术架构设计V2_0_2026-09-03.md`（**V2.0 架构新增 LLM 编排 / TTS / 闪测三模块**）
-12. `docs/30_技术方案/44_B7_LLM注入完整接口契约_2026-09-03.md`（**B19 前置契约 + phrase_block_uses 新表 + 10 测试用例**）
-13. `docs/30_技术方案/45_A4_隐私声明与级联删除完整规格_2026-09-03.md`（**第二波 OPEN 项清账；文案 + 级联删除 + 8 测试用例**）
-14. `docs/30_技术方案/46_F3_B4_收藏置顶与重播完整规格_2026-09-03.md`（**F3 置顶排序规则 + B4 重播 UI 规格 + 波形预计算**）
-15. `docs/40_研发流程与协作/47_D1_D5_开放技术决策备忘录_2026-09-03.md`（**D-1~D-5 决策备忘录；周六上午决策会议预备材料**）
-16. `docs/50_测试与验收/57_FluentWork评估集100条样本设计_2026-09-03.md`（**B8/B18 验证必需；100 条分层样本 + 4 阶段建立计划**）
-17. `docs/40_研发流程与协作/53_FluentWork_V2_0启动前待办清单_2026-09-03.md`（**V2.0 实施前的硬阻塞、软阻塞、Issue 拆分**）
-18. `docs/40_研发流程与协作/54_FluentWork_V2_0周末作战地图与Issue草案集_2026-09-03.md`（**9/5-9/6 集中攻克：5 Epic × 16 Issue 草案 + 测试用例 + 验收标准**）
-13. `docs/50_测试与验收/50_FluentWork端到端注入能力验证文档.md`
-14. `docs/50_测试与验收/51_FluentWork第一波能力验证与第二波薄弱点检查门禁.md`
-15. `docs/50_测试与验收/52_FluentWork第一波遗留问题清账与第二波启动前计划.md`
-16. `docs/50_测试与验收/56_FluentWork第二波PRD对照检查与收口评估_2026-09-03.md`（**第二波收口评估，含 V2.0 缺口分析**）
-17. `docs/60_评审与复盘/65_FluentWork_说读炼化闪测语料库_闭环状态收口报告_2026-09-03.md`（**五环节完成度 + 阻塞根因 + 后续计划**）
-18. `docs/60_评审与复盘/60_评审记录-W0.md`
-19. `docs/60_评审与复盘/62_FluentWork第一波关闭记录.md`
+---
 
+## 二、启动日（9/10）一键跳转
 
-## Working Rules
+### backend（W3 Day 1 凭证到位后建仓）
 
-1. Product decisions are recorded before implementation starts.
-2. Architecture and scope changes must be reflected in docs.
-3. Every execution repository should link back to the relevant spec or issue.
-4. Release and review criteria should be maintained here before rollout.
-5. Root files should remain minimal and intentional.
+| 顺序 | Issue | 草稿 | 估时 | 凭证依赖 |
+|---|---|---|---|---|
+| 1 | **B19** | [57_](./40_研发流程与协作/57_B19_B7_命中注入_Issue_Draft_2026-09-06.md) | 1d | 无 |
+| 2 | **B25** | [59_](./40_研发流程与协作/59_B25_F3_收藏置顶_Issue_Draft_2026-09-06.md) | 1d | 无 |
+| 3 | **B17** | [56_](./40_研发流程与协作/56_B17_TTS_Provider_Issue_Draft_2026-09-06.md) | 1.5d | C-2 火山 TTS |
+| 4 | **B22** | [58_](./40_研发流程与协作/58_B22_闪测与A4隐私_Issue_Draft_2026-09-06.md) | 2.5d | C-1 Ark Mini |
+| 5 | **B21** | [70_](./40_研发流程与协作/70_B21_素材模块_Issue_Draft_2026-09-06.md) | 1.5d | C-1 Ark Mini |
+| 6 | **B18** | [69_](./40_研发流程与协作/69_B18_review_eval_Issue_Draft_2026-09-06.md) | 1d | C-1 + B16 |
+| 7 | **B23** | [71_](./40_研发流程与协作/71_B23_话题卡生成_Issue_Draft_2026-09-06.md) | 1d | C-1 + D-5 cron |
+| 8 | **B24** | [72_](./40_研发流程与协作/72_B24_历史回顾API_Issue_Draft_2026-09-06.md) | 0.5d | 无 |
 
-## 当前说明
+**backend 单人总计**：9 dev-days（W3 一周可全部启动并 CLOSED）
 
-- 正式文档统一进入 `docs/` 对应分类目录。
-- 核心文档已完成第二轮编号重命名，统一采用 `数字前缀_主题名.md`。
-- 共享 agent 规则与模板统一放在 `agents/` 下维护。
-- GitHub 组织和 4 个基础仓库已经初始化完成。
-- 当前治理与规格文档以 `fluentwork-meta` 为真源。
+### iOS（W3 Day 1 立即建仓 I20+I21）
 
-## Related Repositories
+| 顺序 | Issue | 草稿 | 估时 | 阻塞 |
+|---|---|---|---|---|
+| W3-1 | **I20** | [67_](./40_研发流程与协作/67_I20_Prompt工程师接入_Issue_Draft_2026-09-06.md) | 0.5d | **无** ✅ |
+| W3-1 | **I21** | [68_](./40_研发流程与协作/68_I21_状态机子状态扩展_Issue_Draft_2026-09-06.md) | 0.5d | **无** ✅ |
+| W3-3 | **I15** | [62_](./40_研发流程与协作/62_I15_TTS播放集成_Issue_Draft_2026-09-06.md) | 1d | B17 |
+| W4-1 | **I14** | [61_](./40_研发流程与协作/61_I14_创建练习弹层_Issue_Draft_2026-09-06.md) | 1d | B21 |
+| W4-2 | **I16** | [63_](./40_研发流程与协作/63_I16_完整转录浮层_Issue_Draft_2026-09-06.md) | 1d | B18 |
+| W4-3 | **I17** | [64_](./40_研发流程与协作/64_I17_闪测UI_Issue_Draft_2026-09-06.md) | 1.5d | B22 |
+| W4-4 | **I18** | [65_](./40_Developments/FluentWork%20App/fluentwork-meta/docs/40_研发流程与协作/65_I18_话题卡UI_Issue_Draft_2026-09-06.md) | 1d | B23 |
+| W4-5 | **I19** | [66_](./40_研发流程与协作/66_I19_历史回顾列表_Issue_Draft_2026-09-06.md) | 0.5d | B24 |
 
-- `fluentwork-ios`
-- `fluentwork-backend`
-- `fluentwork-infra`
+**iOS 单人总计**：7 dev-days（W3 Day 1 可立即开工 1d，W4 启动后 6d）
 
-## Next Initialization Targets
+---
 
-- [ ] V2.0 五项开放技术决策拍板（D-1 ~ D-5，详见 `40_研发流程与协作/53_`）
-- [ ] 火山 Ark LLM + TTS 凭证申请（W2 末必须到位）
-- [ ] 18 个 V2.0 一级 Issue 在三仓建立（参考 `40_研发流程与协作/52_` 模式）
-- [ ] V2.0 数据库迁移脚本入库（drill_records 等）
-- [ ] add issue templates
-- [ ] add PR template
-- [ ] add CODEOWNERS for meta
-- [ ] expand document and workflow checks
+## 三、决策 + 契约 + 迁移 三层依赖
+
+### Layer 0：5 项开放决策（已全部 ✅ 提前拍板 2026-09-06）
+
+详见 [`47_D1_D5_开放技术决策备忘录_2026-09-03.md`](./30_技术方案/47_D1_D5_开放技术决策备忘录_2026-09-03.md) V1.1
+
+| 决策 | 拍板 | 应用 Issue |
+|---|---|---|
+| D-1 LLM | Ark Mini + 深度思考异步 | B18 / B21 / B22 / B23 |
+| D-2 TTS | 火山独立 + 4 项音色表 | B17 + I15 |
+| D-3 闪测 | Ark Mini | B22 + I17 |
+| D-4 调度 | 简化 SM-2 | B22 + I17 |
+| D-5 每日一读 | 批处理 04:00 UTC + 按需兜底 | B23 复用 cron |
+| D-API-1 F3 | PATCH 拆分 | B25 |
+| D-API-2 A4 | `/api/v1/account/data` | B22 A4 子任务 |
+
+### Layer 1：契约冻结
+
+详见 [`48_FluentWork_V2_REST接口契约冻结_2026-09-06.md`](./30_技术方案/48_FluentWork_V2_REST接口契约冻结_2026-09-06.md)
+
+| 端点分组 | 文档节 | 关联 Issue |
+|---|---|---|
+| §1.1.6 + §1.1.7 | 账号删除/导出 | B22 A4 |
+| §1.2 | 素材 | B21 + I14 |
+| §1.3.2 | 会话列表 | B24 + I19 |
+| §1.3.3 + §1.3.7 | 会话回顾 | B18 + I16 |
+| §1.4.3 + §1.4.4 | F3 PATCH pin/favorite | B25 + I25 (V1.5) |
+| §1.5 | 闪测 | B22 + I17 |
+| §1.6.1 | TTS Provider | B17 + I15 |
+| §1.7 | 话题卡 | B23 + I18 |
+| §2.6 + §2.7 | B7 内部 API | B19 |
+| §2.8 | support undelete | B22 子任务 3 |
+
+### Layer 2：迁移脚本
+
+详见 [`49_FluentWork_V2_数据库迁移脚本总览_2026-09-06.md`](./30_技术方案/49_FluentWork_V2_数据库迁移脚本总览_2026-09-06.md)
+
+| # | 迁移 | 状态 | 关联 Issue |
+|---|---|---|---|
+| 0008 | `alter_utterances_add_llm_eval` | ✅ 就绪 | B18 |
+| 0009 | `alter_phrase_blocks_add_total_uses` | ✅ 就绪 | B19 |
+| 0010 | `create_phrase_block_uses` | ✅ 就绪 | B19 |
+| 0011 | `create_drill_records` | ✅ 就绪 | B22 |
+| 0012 | `alter_privacy_soft_delete` | ⏸ 待 B22 创建 | B22 子任务 2 |
+
+---
+
+## 四、门禁对齐
+
+### 53_ V1.2 §五之三「Issue 拆分总览」
+
+**backend 启动包就绪率**：8/10（B16 / B20 待 W3 中期补齐）
+**iOS 启动包就绪率**：8/8 ✅
+**DC-2 完成度**：16/18（89%）
+
+### W3 启动日（9/10）建仓清单
+
+| 仓库 | 立即可建仓 | 凭证到位后建仓 |
+|---|---|---|
+| `FluentWork/fluentwork-ios` | **I20 + I21**（2 个，无阻塞） | I14 / I15 / I16 / I17 / I18 / I19（6 个等 backend） |
+| `FluentWork/fluentwork-backend` | B19 / B25（2 个无阻塞） | B17 / B18 / B21 / B22 / B23 / B24（6 个凭证依赖） |
+
+### W3 中期补齐
+
+| Issue | 启动包 | 补齐时间 |
+|---|---|---|
+| B16 AIOrchestrator 骨架 | ⏸ 待补 | 9/12 周六复核会后 |
+| B20 每日一读内容生成 | ⏸ 待补 | 9/12 周六复核会后 |
+
+---
+
+## 五、PR 关闭同步规则
+
+每个 Issue CLOSED 后，按以下 3 步回写状态：
+
+1. **回到启动包索引**：在 `55_` / `60_` 对应行把「🟢 启动包就绪」改为「🟢 已建仓 + #XXX → CLOSED ✅」
+2. **回写 53_ §五之三 F-6**：把对应行状态从「启动包就绪」改为「CLOSED ✅」
+3. **同步归档**：本 README 同步更新（CLOSED ✅ 标记）
+
+---
+
+## 六、关联文档全景
+
+| 类别 | 文档 |
+|---|---|
+| **V2.0 架构** | [`39_FluentWork后端技术架构设计V2_0_2026-09-03.md`](./30_技术方案/39_FluentWork后端技术架构设计V2_0_2026-09-03.md) |
+| **iOS 技术设计** | [`32_FluentWork-iOS App端技术设计文档.md`](./30_技术方案/32_FluentWork-iOS App端技术设计文档.md) |
+| **全链路架构** | [`50_FluentWork全链路架构设计V1_0_2026-09-03.md`](./30_技术方案/50_FluentWork全链路架构设计V1_0_2026-09-03.md)（**V1.0 2026-09-06 归位自原 `~/docs/architecture-design.md`**） |
+| **I20 收口** | [`38_I20收口与全链路架构设计.md`](./30_技术方案/38_I20收口与全链路架构设计.md) |
+| **决策备忘录** | [`47_D1_D5_开放技术决策备忘录_2026-09-03.md`](./30_技术方案/47_D1_D5_开放技术决策备忘录_2026-09-03.md) |
+| **REST 契约冻结** | [`48_FluentWork_V2_REST接口契约冻结_2026-09-06.md`](./30_技术方案/48_FluentWork_V2_REST接口契约冻结_2026-09-06.md) |
+| **API 对账** | [`47_API契约冻结与对账_v1.0_2026-09-06.md`](./30_技术方案/47_API契约冻结与对账_v1.0_2026-09-06.md) |
+| **数据库迁移** | [`49_FluentWork_V2_数据库迁移脚本总览_2026-09-06.md`](./30_技术方案/49_FluentWork_V2_数据库迁移脚本总览_2026-09-06.md) |
+| **B7 接口契约** | [`44_B7_LLM注入完整接口契约_2026-09-03.md`](./30_技术方案/44_B7_LLM注入完整接口契约_2026-09-03.md) |
+| **A4 隐私规格** | [`45_A4_隐私声明与级联删除完整规格_2026-09-03.md`](./30_技术方案/45_A4_隐私声明与级联删除完整规格_2026-09-03.md) |
+| **F3 / B4 规格** | [`46_F3_B4_收藏置顶与重播完整规格_2026-09-03.md`](./30_技术方案/46_F3_B4_收藏置顶与重播完整规格_2026-09-03.md) |
+| **Prompt 工程** | [`33_FluentWork-Prompt工程与语料库设计文档.md`](./30_技术方案/33_FluentWork-Prompt工程与语料库设计文档.md) |
+
+---
+
+## 七、未覆盖项 + 后续工作
+
+| 项 | 状态 | 补齐时间 |
+|---|---|---|
+| B16 AIOrchestrator 启动包 | ⏸ | 9/12 周六复核会后 |
+| B20 每日一读启动包 | ⏸ | 9/12 周六复核会后 |
+| WSS 帧协议 V2.0 冻结版 | ⏸ DC-3 扩展 | W3 中期 |
+| 0012 软删除迁移 | ⏸ 待 B22 创建 | B22 启动时 |
+| B16 + B20 索引 + 草稿 | ⏸ | 9/12 后单独 commit |
+
+**9/12 周六复核会后** 再补 2 个 backend 启动包（B16 / B20），更新 `55_` 索引 + 本 README，DC-2 完成度升至 **18/18 (100%)**。
+
+---
+
+*README 版本：V1.0（2026-09-06 晚场首次落库）*
+*上游依据：`53_V1.2 §五之三` Issue 拆分总览*
+*下游交付：W3 启动日 GitHub Issue 建仓*
