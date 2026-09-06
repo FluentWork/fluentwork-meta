@@ -23,6 +23,29 @@
 
 ---
 
+## 🏛 架构选型澄清(关于"火山 iOS TTS SDK")
+
+**问题**：官方文档有「双向流式 TTS iOS SDK」集成路径,为什么不直接用?
+
+**回答**：
+
+| 候选 | 客户端 SDK 处理什么 | 服务端入口 | 是否采纳 |
+|---|---|---|---|
+| **A. 当前 I15 方案**(本 Issue) | iOS 客户端用 `OpusDecoder` + `AVAudioEngine` | **走 voicegateway WSS**(B17) | ✅ **采纳** |
+| B. 火山 iOS TTS SDK(全双工) | 客户端直连火山,接收流式 PCM | 绕过 voicegateway | ❌ **不采纳**——破坏 B14/B15/B17/B22/badge/turn/keepalive 全链路,审计风险高 |
+| C. 火山 iOS TTS SDK(单向流式) | 客户端直连火山生成音频 | voicegateway 只中转文本 | ❌ **不采纳**——客户端失去 voicegateway 的鉴权/速率/可观测统一管控 |
+
+**架构锁定理由**：
+
+1. **服务端入口统一由 voicegateway 守门**——B14/B15/B17/B22 已落地,统一鉴权、流量染色、徽章上报、turn_id 追踪、keepalive、空闲断线回收
+2. **客户端只承担"解码 + 播放 + jitter buffer + 中断"职责**——`OpusDecoder` + `AVAudioEngine` 已可覆盖,无需引入额外 SDK 依赖
+3. **iOS SDK 不解决 P0 性能指标**——首字 P90 ≤ 400ms 取决于 WSS 通道延迟,与客户端解码 SDK 选择无关
+4. **审计 + 可回滚**——客户端直接调火山意味着鉴权 key 落地在 iOS 包内,违反"凭证只驻后端"原则(见 `47_` §D-4)
+
+**结论**:iOS 端**仅使用**流式音频解码/播放的客户端能力,**不绕过** voicegateway 的服务端入口。如未来火山推出纯客户端 SDK(无服务端入口)且不破坏可观测性,可单独立项评估。
+
+---
+
 ## 🚧 阻塞条件
 
 - **B17（TTS Provider backend）CLOSED**—— voicegateway 已支持流式 Opus TTS 推送
