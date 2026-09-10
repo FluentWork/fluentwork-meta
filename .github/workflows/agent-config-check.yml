@@ -26,6 +26,7 @@ jobs:
           test -f agents/shared/ai-collaboration.md
           test -f agents/shared/git-and-pr-rules.md
           test -f agents/shared/review-gate.md
+          test -f agents/shared/defect-fix-discipline.md
           test -f agents/shared/skills-policy.md
           test -f agents/shared/matt-pocock-skills.md
           test -f agents/templates/CLAUDE.md.template
