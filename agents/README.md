@@ -33,6 +33,6 @@ agents/
 | `shared/ai-collaboration.md` | AI 与人的角色分工 |
 | `shared/git-and-pr-rules.md` | 分支、提交、PR 边界 |
 | `shared/review-gate.md` | 合入前审查链路与 attestation |
-| `shared/defect-fix-discipline.md` | **缺陷修复必须先复现再修,并留下守卫测试** |
+| `shared/defect-fix-discipline.md` | **缺陷修复必须先复现再修,留下守卫测试,并破坏实现证明守卫咬得住** |
 | `shared/skills-policy.md` | skills 使用边界 |
 | `shared/matt-pocock-skills.md` | 外部 skills 的适用范围 |
