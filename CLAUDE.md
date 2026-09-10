@@ -18,6 +18,7 @@ Shared agent rules live in:
 - `agents/shared/ai-collaboration.md`
 - `agents/shared/git-and-pr-rules.md`
 - `agents/shared/review-gate.md`
+- `agents/shared/defect-fix-discipline.md`
 - `agents/shared/skills-policy.md`
 - `agents/shared/matt-pocock-skills.md`
 
