@@ -1,10 +1,10 @@
 # WSS 系列 14 · 长 TTS 打断：如何定位，如何修
 
-**版本**：V1.0
+**版本**：V1.1
 **日期**：2026-09-12
 **定位**：一次真机事故的完整证据链。用户在 AI **还在说话**时开口，本地声音截断了，但左边气泡裂开、新内容答的不是刚问的那句。本篇只讲**怎么发现、怎么拆、怎么改**；业界对照与「原来的代码错在哪一层原理」见 [96](96_WSS系列_15_长TTS打断_业界做法与原代码问题.md)。播放本身怎么接到扬声器，见 [98](98_WSS系列_17_TTS播放与轮次设计.md)。
 **对应上游文档**：[87 双工·流式·打断](87_WSS系列_06_双工_流式与打断.md) · [94 客户端状态机](94_WSS系列_13_客户端状态机_协议事件的消费者.md)
-**变更说明**：首版。87 把打断写成「网关两层空操作」——那是 9/11 的事实，**不是** 9/12 之后的事实。读 87 的 §3.5 时以本篇为准。
+**变更说明**：首版。87 把打断写成「网关两层空操作」——那是 9/11 的事实，**不是** 9/12 之后的事实。读 87 的 §3.5 时以本篇为准。V1.1：§4.2 复核 —— 网关守卫与 iOS 帧序是**两道各自足够的修复**，网关那道让帧序变成无关项；承重的不变量只有「`collectingTurn` 时不得 reset」半句。
 
 ---
 
@@ -98,7 +98,7 @@ iOS 在 `ai.turn.end` 上做两件不可逆的事：把当前这条 AI 消息**�
 
 > **同一轮的声音，必须在 `ai.turn.end` 之前全部离开网关。顺序是：文本 / ASR → 尾巴或整包音频 → `ai.tts.end` → `ai.turn.end` 最后。**
 
-### 4.2 帧顺序：`user.speech.start` 先于 `interrupt`，而且 start 会清掉本轮记账
+### 4.2 记账被「下一轮开口」擦掉 —— 而两端各修了一次
 
 客户端音频泵在 `.aiSpeaking` 里检测到开口，曾经先发 `user.speech.start`，再由状态机副作用发 `interrupt`。
 
@@ -106,15 +106,28 @@ iOS 在 `ai.turn.end` 上做两件不可逆的事：把当前这条 AI 消息**�
 
 于是日志里永远是 `delivered_chars: 0`。不是用户什么都没听到，是记账被下一轮的 start 洗了。
 
-守卫：`TestBargeInStartThenInterruptStillRecordsWhatWasDelivered`。
+**这一处两端各上了一道守卫，各自都足以单独修好。**（2026-09-12 复核）
 
-iOS 守卫：`bargeInFromAISpeakingSendsInterruptBeforeUserSpeechStart`。音频泵在 `.aiSpeaking` 时先 `submitTranscript("__interrupt__")`，再 `sendSpeechBoundary(started: true)`。
+| 端 | 守卫 | 做什么 | 单独够不够 |
+|---|---|---|---|
+| 网关 | `TestBargeInStartThenInterruptStillRecordsWhatWasDelivered` | `user.speech.start` 只在 `!collectingTurn` 时 reset | **够** —— 帧序从此无关项 |
+| iOS | `bargeInFromAISpeakingSendsInterruptBeforeUserSpeechStart` | 泵在 `.aiSpeaking` 时先 `submitTranscript("__interrupt__")`，再 `sendSpeechBoundary(started: true)` | 够，但**只在网关没修时才必要** |
 
-不变量：
+网关那道的条件是 `!s.collectingTurn`（`provider_volc_duplex.go:425`）。长 TTS 还在播的窗口正是 `collectingTurn == true` 的窗口，所以**两种帧序现在结果一致** —— 旧顺序不再把 `deliveredText` 清成 0。
 
-> **打断帧必须先于「新一轮开口」帧。开口帧在 `collectingTurn` 时不得重置本轮的送达记账。**
+不变量因此要拆成两句，因为承重的只有后半句：
 
-今天音频泵和状态机都可能发 `interrupt`，线上会看到两次。无害，比反了顺序轻。
+> **开口帧在 `collectingTurn` 时不得重置本轮的送达记账。**（承重）
+>
+> 打断帧先于「新一轮开口」帧。（协议卫生；网关修好之后不再是必要条件）
+
+红验证的落点不同：拿掉网关的 `!collectingTurn`，红的是 `delivered_chars` 那条；把 iOS 泵里那次提前 `interrupt` 拿掉，**网关的记账仍然正确**，红的只有 iOS 自己的顺序断言。
+
+`interrupt` 先于 start 仍然值得留 —— 但理由要换成协议卫生（关于**当前**轮的控制帧，理应排在开启**下一**轮的帧之前），而不是「保护网关的 reset 窗口」。后者在网关加守卫后已经过时；iOS 代码里那条注释（"start resets the previous turn's interrupt accounting"）到今天已经不准确。
+
+今天音频泵和状态机都会发 `interrupt`，两边条件相同（都是 `.aiSpeaking`），所以线上**必然看到两次**。对网关无害；代价是把事故的指纹从「顺序错了」改成了「发了两遍」。
+
+**残留窗口**：若 `turnToOutbound` 已经跑完（`collectingTurn` 回落 false、utterance 已落库），此时到达的 `interrupt` 会把记账置在「下一轮」上，随后 `user.speech.start` 因 `!collectingTurn` 命中 reset 又把它清掉。「轮子已收尾、客户端还在放缓冲音频」这段里的打断，仍然记不下来。这与 backend `docs/63` §6 登记的「音频比文本晚」是同一个边界，不是本次回归 —— 也正因如此，评价阶段 barge-in 必须继续**不**发 WSS `interrupt`（§5.1、§7）。
 
 ### 4.3 读循环被 `WaitTurnResult` 堵住，打断到不了正在转发的那一轮
 
@@ -201,7 +214,7 @@ iOS 未改。reducer 本来就会在帧到达时换掉占位。
 ```mermaid
 flowchart TB
     A["4.1 收尾顺序"] --> B["气泡不再因尾巴音频裂开"]
-    B --> C["4.2 先 interrupt 再 start"]
+    B --> C["4.2 collect 期间 start 不再 reset<br/>（网关守卫挡住的；iOS 帧序是第二道）"]
     C --> D["delivered_chars 不再恒为 0"]
     D --> E["4.3 读循环可处理 interrupt + 停转发"]
     E --> F["喇叭里的尾巴不再继续涌来"]
@@ -228,7 +241,8 @@ flowchart TB
 | 把 `interrupted` 暴露给客户端回顾 / 徽章 | 列和落库已有；产品还没决定怎么呈现 |
 | `ai.tts.end.completion_status = interrupted` | iOS 枚举有这个值，网关仍按 turn outcome 填 |
 | 评价阶段 barge-in 发 WSS `interrupt` | 5.1 修完后，服务端轮次已经在 `response.done`；再发 interrupt 会打在下一轮上，正是 4.2 要避免的形状。评价阶段只本地停播，这个取舍要保留，直到音频帧自己带 `turn_id` |
-| 去掉泵和状态机的重复 `interrupt` | 无害；清它不是这次的不变量 |
+| 去掉泵和状态机的重复 `interrupt` | 无害；清它不是这次的不变量。但它是「同一条线上两个生产者」的形状，见 96 §7 |
+| 把 iOS 那次提前 `interrupt` 摘掉 | 网关守卫已经承重，摘掉它行为不变 —— 但留着更合协议卫生，且不该为省一次重复帧去动一条刚验过的路径 |
 
 ---
 
@@ -240,6 +254,8 @@ flowchart TB
 4. 为什么同步 `WaitTurnResult` 会让 `interrupt` 打偏？
 5. `output_audio.done` 和 `response.done` 差在哪？用错会让下一轮怎样死？
 6. 评价阶段为什么**不应该**发 WSS `interrupt`？这和「本地必须立刻停播」矛盾吗？
+7. 4.2 的两道守卫，哪一道是承重的？把另一道摘掉，哪个测试会红、哪个不会？
+8. 「轮子已收尾、客户端还在放缓冲音频」这段里的打断，为什么仍然记不下来？它算这次回归吗？
 
 ---
 
@@ -252,8 +268,9 @@ flowchart TB
 | 表面 | 本地静音 + 转写；左边气泡裂开，续写上一轮 |
 | 真正错位 | 播放时钟的上一轮 × 协议帧的下一轮 |
 | 收尾顺序 | 尾巴音频 → `ai.tts.end` → **`ai.turn.end` 最后** |
-| 打断顺序 | `interrupt` 先于 `user.speech.start` |
-| collect 中的 start | **不得** `resetTurnStreamingState` |
+| 打断顺序 | `interrupt` 先于 `user.speech.start`（协议卫生；**非承重**） |
+| collect 中的 start | **不得** `resetTurnStreamingState`（**承重** —— 网关 `!collectingTurn` 守卫在此） |
+| 两端各修一次 | 网关守卫与 iOS 帧序各自足够；网关那道让帧序变无关项 |
 | 读循环 | collect 进 goroutine；interrupt 仍在环上 |
 | 打断后转发 | 文本 / 音频 sink 直接 return |
 | collect 终止 | 仅 `response.done` |
@@ -265,4 +282,4 @@ flowchart TB
 
 **系列导航**
 
-[导读](81_WSS系列_00_导读_全景图与术语表.md) · [ELI5](82_WSS系列_01_ELI5_一条语音的旅程.md) · [为什么是 WSS](83_WSS系列_02_为什么是WSS_选型推导.md) · [协议层](84_WSS系列_03_协议层_帧设计与版本化.md) · [iOS 传输层](85_WSS系列_04_iOS传输层.md) · [后端网关](86_WSS系列_05_后端网关.md) · [双工·流式·打断](87_WSS系列_06_双工_流式与打断.md) · [可观测性与健壮性](88_WSS系列_07_可观测性与健壮性.md) · [方法论](89_WSS系列_08_方法论_遇到同类场景怎么想.md) · [实践总结](90_WSS系列_09_实践总结_这套用法的问题与改进.md) · [认证·错误·降级](91_WSS系列_10_认证_错误与降级.md) · [怎么测试](92_WSS系列_11_怎么测试一条WSS链路.md) · [问题排查](93_WSS系列_12_问题排查手册.md) · [客户端状态机](94_WSS系列_13_客户端状态机_协议事件的消费者.md) · **本篇** · [业界与原代码](96_WSS系列_15_长TTS打断_业界做法与原代码问题.md) · [帧的解析与包装](97_WSS系列_16_帧的解析与包装.md) · [TTS 播放与轮次](98_WSS系列_17_TTS播放与轮次设计.md)
+[导读](81_WSS系列_00_导读_全景图与术语表.md) · [ELI5](82_WSS系列_01_ELI5_一条语音的旅程.md) · [为什么是 WSS](83_WSS系列_02_为什么是WSS_选型推导.md) · [协议层](84_WSS系列_03_协议层_帧设计与版本化.md) · [iOS 传输层](85_WSS系列_04_iOS传输层.md) · [后端网关](86_WSS系列_05_后端网关.md) · [双工·流式·打断](87_WSS系列_06_双工_流式与打断.md) · [可观测性与健壮性](88_WSS系列_07_可观测性与健壮性.md) · [方法论](89_WSS系列_08_方法论_遇到同类场景怎么想.md) · [实践总结](90_WSS系列_09_实践总结_这套用法的问题与改进.md) · [认证·错误·降级](91_WSS系列_10_认证_错误与降级.md) · [怎么测试](92_WSS系列_11_怎么测试一条WSS链路.md) · [问题排查](93_WSS系列_12_问题排查手册.md) · [客户端状态机](94_WSS系列_13_客户端状态机_协议事件的消费者.md) · **本篇** · [业界与原代码](96_WSS系列_15_长TTS打断_业界做法与原代码问题.md) · [帧的解析与包装](97_WSS系列_16_帧的解析与包装.md) · [TTS 播放与轮次](98_WSS系列_17_TTS播放与轮次设计.md) · [轮次归属](99_WSS系列_18_轮次归属_顺序标识与三条时钟.md)
