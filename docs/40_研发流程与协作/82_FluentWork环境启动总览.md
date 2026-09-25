@@ -334,7 +334,8 @@ curl -sS -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
 `infra` 目前只有骨架 —— `deploy/`、`docker/`、`environments/`、`monitoring/`、`scripts/`
 五个目录里**只有 `.gitkeep`**。实际在用的是：
 
-- 共享 schema 真源：`schemas/transport/wss-control-frames-v1.json`（v2 也在）
+- 共享 schema 真源：`schemas/transport/wss-control-frames-v2.json`（控制帧；v1 已于 2026-09-25 退役）
+- 二进制音频帧布局真源：`schemas/transport/wss-binary-audio-frames-v1.json`（sha256 冻结）
 - 可观测性事件 schema：`schemas/events/speech-observability-events-v1.json`
 - 可观测性设计文档：`docs/observability/`
 

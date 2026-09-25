@@ -19,7 +19,8 @@
 2. 业务/分析 schema 在 `infra/schemas/events/`
 3. transport schema 在 `infra/schemas/transport/`
 4. 当前已落地 canonical 文件包括：
-   - `infra/schemas/transport/wss-control-frames-v1.json`
+   - `infra/schemas/transport/wss-control-frames-v2.json`
+   - `infra/schemas/transport/wss-binary-audio-frames-v1.json`
    - `infra/schemas/events/speech-observability-events-v1.json`
 
 ## iOS 端 `source=ios` 约定

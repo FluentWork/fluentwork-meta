@@ -55,7 +55,7 @@
 | BE-S1-2 | **`httpjson.Error` 零测试**，而它是每个 API 错误的唯一出口，有 4 个分支 | 补 4 个分支的测试 | 低 | **高** | `04` §3.2 |
 | BE-S1-3 | **手写二进制解码器没有 fuzz**（全仓 0 个 fuzz） | 给 `DecodeAITTSAudio` 写 fuzz | 低 | **高** | `04` §3.1 |
 | BE-S1-4 | **控制帧分派是线性扫描，同一帧被解码最多 8 次** | 改成按类型查表，把已解出的 `frameType` 传下去 | **低**（只搬分派） | 中 | `02` §3.1 |
-| BE-S1-5 | **`ai.audio.chunk` 常量无生产者、无注释** | 加一句「无生产者，保留为协议位」 | 无 | 低 | `02` §3.2 |
+| BE-S1-5 | **`ai.audio.chunk` 常量无生产者、无注释** | 加一句「无生产者，保留为协议位」；**v1 已退役但这张死面仍在 v2**（见 §8） | 无 | 低 | `02` §3.2 |
 | BE-S1-6 | **音频热路径的逐帧 `Debug` 日志**，成本无法量化（因为 0 个 benchmark） | 先加 benchmark，再用数据决定 | 低 | 中 | `02` §3.4、`04` §3.1 |
 | BE-S1-7 | **`providerErrorStrategies` 的 key 与 handler 的对应关系只靠读** | 补一条测试：表里每个 key 都必须是真会转发给 provider 的帧类型 | 低 | 中 | `02` §2.1 |
 | BE-S1-8 | **`config.Config` 夹具复制到 23 个文件（约 56 处）** | 抽 `config.TestConfig(t)` | 低 | 中 | `04` §3.4 |
@@ -173,3 +173,47 @@
 **读法**：backend 在**工程纪律的机械化**上领先（门禁脚本、depguard、反射分类测试、租约队列）；iOS 在**语音链路的所有权收敛**上更完整（`TTSPlaybackCoordinator` 是单一所有者，backend 的两条音频路径是有意分开的）。
 
 **两侧共同缺的**：一个能覆盖「真机/真进程」层级的验证位置，以及「把判断变成判据」的习惯在**所有**关键不变量上的落实。
+
+---
+
+### 8. v1 控制帧契约已退役（2026-09-25）
+
+`fluentwork-infra/schemas/transport/wss-control-frames-v1.json` 已删除，两侧镜像与全部
+消费点同步移除。**决定依据**：v2 是 v1 的严格超集（帧集合 17 ⊇ 14，字段只增不减），
+且 v1 **没有任何生产消费者** —— backend 侧只有 `schemas/embed.go` 的 embed 声明和
+`internal/voiceproto/frames_test.go` 在读它，iOS 侧只有 `PackageBaselineTests.swift`。
+
+**随 v1 一起处置的 backend 测试**（它们全部只用于钉住 v1 的字节）：
+
+| 测试 | 处置 |
+|---|---|
+| `TestSchemaV1BytesAreFrozen` | 删除（sha256 摘要钉随文件消失） |
+| `TestSchemaV1OmitsClientTurnAbort` | 删除 |
+| `TestSchemaV1AITextDeltaOmitsServerTsMs` | 删除 |
+| `TestSchemaV1AITurnEndStaysFrozenWithoutOutcome` | 删除 |
+| `TestSchemaV1DeadFacesAreStillPresentAndStillDead` | **拆开**：读 v1 的那半删除；断言 `Interrupt` 不序列化 `max_seq` 的那半保留为 `TestInterruptDoesNotSerialiseMaxSeq`（已用「去掉 `omitempty`」验证它会红） |
+| `TestSchemaFilePresent` | 改指 v2，断言原样保留 |
+
+iOS 侧 `wssControlFramesSchemaHasUserSpeechEndTurnAndText` 与
+`wssControlFramesSchemaHasFeedbackBadgePhraseBlockAndTier` 原本读 v1，但它们断言的是
+`user.speech.end` 与 `feedback.badge` —— 这两个 `$defs` 在 v2 里**逐字相同**，改指 v2
+后断言一字未丢。
+
+**P1-18 的教训（原记录写在被删的那个测试头上，移到这里）**：v1 冻结了两个从未运行过的
+面 —— `ai.audio.chunk`（无生产者、无消费者、两侧无测试）与 `interrupt.max_seq`（声明
+`omitempty` 且从未被赋值，客户端根本不解析）。它们不是「被遗忘」，而是**在有任何东西跑过
+它们之前就被冻结**，于是把未知变成了永久负债：v1 是一句承诺，而关于没人执行过的代码的
+承诺，是对「无」的承诺。**只冻结已经执行过的形态。**
+
+⚠️ **退役 v1 并没有清掉这两个死面。** `aiAudioChunk` 与 `interrupt.max_seq` 在 **v2 里
+逐字存在**，而 v2 没有 sha256 冻结、是可改的。**BE-S1-5 因此仍然成立。** 要真清掉，
+得单独动 v2 —— 那是另一件事，不在本次范围内。
+
+**仍未纠正的历史引用**（有日期的时点快照，记录的是当时为真的事实，**刻意不改**；
+搜到 v1 时按本节理解）：`51_`、`61_`、`64_`、`76_`、`77_`。
+
+**同一个坑对新冻结产物的提醒**：`schemas/transport/wss-binary-audio-frames-v1.json`
+同样用 sha256 冻结，而其中 h8 布局**没有任何一端实现过**。它用 `status` 字段显式标注了
+「target (Stage 3) — not implemented by either side yet」；实现落地后必须重新核对并刷新
+摘要，不能把当时的猜测当成已验证的契约。
+
