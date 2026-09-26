@@ -154,7 +154,7 @@
 | BE-S2-6 | **指标发射器里只有一部分对 label 集合排序**，其余用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 | ✅ **已完成**（backend `8325795`；**判据本身在 `82bd06e` 修正**，见下） |
 | BE-S2-9 | `tts` 的 `TestRouter_Stream_RouteHit` 断言全局计数器的**绝对值**（`expected 1 hit for voice-a, got 2`） | 本次复核新发现 | ❌ **仍开着** —— `-count>1` 必红；门禁固定 `-count=1`，所以从未暴露 |
 | BE-S2-7 | `test/` 是空目录（只有 `.gitkeep`） | `04` §3.3 | ❌ **仍开着** |
-| BE-S2-8 | 51 个环境变量没有一份清单（唯一来源是两个 `Config` 结构体） | `03` §4.1 | ❌ **仍开着，且比旧文更可量化** |
+| BE-S2-8 | 51 个环境变量没有一份清单（唯一来源是两个 `Config` 结构体） | `03` §4.1 | ✅ **已完成**（backend `182ec75`；**旧文的三个数字全错**，见下） |
 
 **逐条证据（2026-09-26）**
 
@@ -168,9 +168,27 @@
   ⚠️ **但上一轮的判据是错的，已在 `82bd06e` 修正**：它把「行序稳定」和「**数值**稳定」混在一起（渲染 17 次要求逐字节相同），而同包其它测试真的在跑 refine 管线 ⇒ 整包跑时红、单跑时绿，**上一轮它绿是运气**。现在只断言标签集合**按升序出现**，数值丢弃；5 个包共用 `internal/metricstest.LabelSetsIn`。
 - **BE-S2-9 ❌ 仍开着**（新发现）—— `internal/content/tts/router_test.go:53` 断言 `routeHits` 的绝对值，而它是包级全局：`-count=3` 时输出 `expected 1 hit for voice-a, got 3`。本次未修（与本次改动正交）。
 - **BE-S2-7 ❌ 仍开着** —— `ls test/` 只有 `.gitkeep`（1 字节）。
-- **BE-S2-8 ❌ 仍开着，且比旧文更可量化** —— 把两侧对了一遍：`configs/*.env.example` 声明 **27** 个变量，代码里 **读** 了 **42** 个 ⇒ **21 个只被读、没被声明**（`APP_BASE_URL` / `APP_RUN_REVIEW_WORKER` / `ARK_PRICING_FILE` / `ARK_THINKING` / `DRILL_DAILY_NEW_BLOCK_LIMIT` / `DRILL_PROMOTE_STREAK` / `DRILL_ROUND_SIZE` / `MINI_SESSION_TURN_LIMIT` / `MYSQL_DSN` / `TOPIC_MIN_BLOCKS` / `VOICE_CLIENT_ASR_REQUIRED` / `VOICE_DEV_ECHO_FIXTURE` / `VOICE_DEV_ECHO_TEXT` / `VOLC_DUPLEX_MODEL` / `VOLC_DUPLEX_VOICE` / `VOLC_POC_*`(4) / `VOLC_SPEECH_RESOURCE_TTS` / `VOLC_T9_TRIALS` / `WORKER_ID`）。
-  ⚠️ **这不是纯文档问题**：`dev-up.sh:123-124` 在没有真实 env 文件时**会把 `configs/app-server.env.example` 当环境文件加载** ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。**本次已顺手补上 `MINI_SESSION_TURN_LIMIT`**（backend `4cd446a`，T4 的收尾），其余 20 个未动。
-  （现成形状：`TestVolcEnvExampleCarriesTheGatewayWiring` 断言的就是**模板**而非文件 —— 注释写着 "asserts the *template the file is rebuilt from*, which is the half that was wrong"。所以判据形状已经有了，只是没铺开。）
+- **BE-S2-8 ✅ 已完成**（backend `182ec75`）—— 旧文那句话里**三个数字全错**：「读 42 / 声明 27 / 缺 21」。
+  按源码重数是 **读 70（16 个文件）/ 提及 41 / 缺 35**。差在两处口径，都很具体：
+  1. 旧文只数了两个 `Config` 结构体，漏掉 `cmd/app-server`、`cmd/worker`、`cmd/voice-gateway` 与 5 个 POC/smoke 工具；
+  2. 旧文把「读过一次」当成了「读过」，而 `os.Getenv(key)` 这种**键来自形参**的读取辅助函数（`envOr`/`intOr`/`envFirst`/…）在文本层面是看不见的，反过来 —— `range endpointEnvVars` 那种具名键表也一样。
+
+  **判据三条**（`internal/config/env_declaration_test.go`，同一次扫描）：
+  - **准入**：某个 surface 读到的每个变量必须出现在**它自己的**模板里（或其 shared 模板里）。合并成「三个文件里有一个提到就算」不够 —— 变异 M2 证明过：把 `MYSQL_DSN` 的声明挪进 `voice-gateway.env.example`，弱判据会绿，这条会红。
+  - **分类**：任何读环境变量的目录必须归入某个 surface。新读者落在没人管的目录里，第一条判据永远不会看它。
+  - **登记**：把键转发给 `os.Getenv` 的辅助函数必须在 `envReaderFuncs` 里。**漏登记不会让任何东西红** —— 传进去的键会被当作「绑定的名字」跳过，判据照旧通过，只是查得更少。
+
+  提取器认四种形状（都真实存在）：字面量 / 字符串常量 / `[]struct{key string}` 键表（`durationStrict(knob.key, …)`）/ 具名 `[]string` 键表（`for _, env := range endpointEnvVars`）。每个形状一个正向控制点，所以「某个形状失效」报的是形状，不是变量缺失。无法解析的键参数**报错而不是静默跳过** —— 看不见的键就是查不了的键。
+
+  ⚠️ **口径两处，写下来免得下一个人以为判据松了**：`KEY=`（值为空）算声明，因为本仓每个读取器都把空值当未设置（`envOr`/`intOr`/`boolOr`/`durationOr`/`durationStrict`/`envFirst`/`envTruthy` 逐个核过）；`# KEY=value` 也算，因为 `volc.env.example` 的既有风格就是「注释里写编译期默认值」。散文式提及**不算** —— `# fill ARK_API_KEY(_DEV)` 那种句子不会让判据变松。
+
+  **修法**：35 个键全部按既有风格补成「注释 + 编译期默认值」。它们每一个都有编译期默认值（逐个核过），所以这是**纯发现性**缺口，补注释是忠实的，不是掩盖。实证：`load_env_file configs/app-server.env.example` 改动前后加载出的环境**逐字节相同（10 个键）**。
+
+  ⚠️ **变异 M3 第一次存活，抓出的是提取器本身的盲点**：它只遍历 `file.Decls` 里的 `*ast.FuncDecl`，**漏掉包级变量初始化** —— `var x = os.Getenv("…")` 是一次读，而扫描看不见它。修了提取器（包级声明走同一条 `inspectForReads`）之后 M3 才咬住。
+  这是「用变异验证判据」而不是「用判据证明改动」的又一例：**如果只跑一遍门禁看它变绿，这个盲点会原封不动留在仓里**，而且外观与一条真判据完全一样。
+
+  ⚠️ 顺带纠一处旧记录：`volc.env.example` 写 `# VOLC_DUPLEX_MODEL=1.2.6.0`，而 `internal/voiceduplex` 自己的默认是 `1.2.6.1`。**两个默认值本来就不同**（POC/smoke 工具走 1.2.6.0，duplex 客户端走 1.2.6.1），所以改的是注释（把分歧写清楚），不是值。
+
 
 
 **BE-S2-4 值得单独说（已解）**：`discovery` 原来是一个**手写的路由表副本**，而路由表本身是 nil-gated 动态挂载的（`httpserver/server.go:93-129`）—— 所以「服务有哪些端点」这个问题，**在代码里没有一个地方能一次回答清楚**。现在它读路由表本身（`engine.Routes()`，gin 的官方入口），手抄的可能从根上被去掉。它和 iOS 的 `TransportEventRouter` 那个对照（那边是一张**静态可断言**的表）现在不再成立了：这边变成**运行时派生**的表。
@@ -232,14 +250,15 @@
 
 ---
 
-### 5. 如果只做三件事（2026-09-26 三次重排）
+### 5. 如果只做三件事（2026-09-26 四次重排）
 
-⚠️ **前两版的三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
-二次重排的第 1 顺位 BE-S2-4 + BE-S2-5 ✅ `a003b16`。以下是同一判据下的当前顺位，且只从**复核后确认 ❌** 的条目里挑。
+⚠️ **前三版的三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
+二次重排的第 1 顺位 BE-S2-4 + BE-S2-5 ✅ `a003b16`；三次重排的第 1 顺位 BE-S2-8 ✅ `182ec75`。
+以下是同一判据下的当前顺位，且只从**复核后确认 ❌** 的条目里挑。
 
-1. **BE-S2-8（21 个环境变量只被读、没被声明）** —— 剩下唯一一条**后果落在开发环境里**、且**判据今天就会红**的：`dev-up.sh:123-124` 在没有真实 env 文件时会把 `configs/*.env.example` 当环境文件加载 ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。判据形状已经有了（`TestVolcEnvExampleCarriesTheGatewayWiring` 断言模板），只是没铺开；21 个的名单也已经在 §3 逐条列出。
-2. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下三条 S1 里**唯一既不需要决定、也不需要动契约**的一条（另两条：`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试夹具收敛）。每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
-3. **BE-S2-2 + BE-S2-3（两处注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了三次。
+1. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下所有条目里**唯一既不需要决定、也不需要动契约、且后果落在生产链路**的一条（`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试夹具收敛）。每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
+2. **BE-S2-2 + BE-S2-3（两处注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了三次。
+3. **BE-S2-7（`test/` 是空目录）** —— 唯一一条答案只能二选一的收尾题：要么把那层集成测试的落点补上，要么删掉空壳。它排在这里是因为**它今天就在骗人**（目录存在意味着「集成测试在这」，实际 1 字节）。
 
 **为什么这次把 `BE-S2-9` 排除在三位之外**：它的后果（`-count>1` 会红）**今天没有任何东西会走到**，
 因为门禁固定 `-count=1`。它是一条真缺陷，但排在「修复后无人受益」的位置上 —— 先修会误导读者的那两条。
