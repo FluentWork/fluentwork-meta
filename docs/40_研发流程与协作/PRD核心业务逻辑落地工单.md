@@ -155,14 +155,15 @@
 
 ---
 
-### T4 — 迷你会话的服务端契约（B1）
+### T4 — 迷你会话的服务端契约（B1）｜✅
 
 **目标**：3-5 回合的会话在服务端**真的会结束**。
 
-**现状（证据）**
+**现状（证据，改动前）**
 - `CreateRequest` 只有 `material_id` / `scene_type`（`internal/session/types.go:252-255`）【读码】
 - **网关全仓没有轮次概念**：`turnLimit|maxTurns|turnCount` 零命中【实测】
 - 客户端零（无 UI、无参数）
+⇒ 「3-5 回合」此前只是提示词里的一句话：**模型不遵守时没有任何东西会红**。
 
 **改动形状**
 1. `CreateRequest` 加 `session_length`（`standard` / `mini`）→ 落库（`practice_sessions` 加列 ⇒ **infra 迁移先行**）。
@@ -170,11 +171,36 @@
 3. 每轮 `user.speech.end` 计数；达上限时给模型一句收尾指令 —— 复用**已有的**会话中注入通道 `UpdateInstructions`（`internal/voiceduplex/volc_duplex.go:240`，B14 V2）。
 4. 向客户端发终止信号 —— **这是跨仓契约**：照 Stage 3 的先例走 v2 **可选**字段（`ai.turn.end` 加 `session_complete`），**不能碰 v1 冻结的二进制帧**。
 
-**完成判据**
-- 一条测试断言「第 N 轮之后产生收尾指令 + 终止信号」，且 **N 来自 session 配置而不是常量**（写死常量的实现必须过不了）。
-- 反向：`standard` 不产生终止信号。
+**已落地（infra `17a4d91` → backend `5320818`）**
+1. infra：`$defs.aiTurnEnd` 加可选 `session_complete: boolean`。**可选而非必需** —— 在 `additionalProperties: false` 下，「必需」会让还不认识这个字段的客户端整帧解析失败；缺席是有意义的值（「这场没有长度契约」）。
+2. `session`：`CreateRequest.session_length` + migration `0028` 加列 `practice_sessions.session_length`（`DEFAULT 'standard'`，所以既有行与不提这个字段的客户端行为不变）。
+3. **N 只有一个来源**：`session.Service.turnLimit()` 读**记录**判是不是 mini、读 **`cfg.MiniSessionTurnLimit`**（env `MINI_SESSION_TURN_LIMIT`）给数，`<= 0` 归一为 `session.DefaultMiniSessionTurnLimit = 5`。config 只读 env、只拒负、**不设默认** —— 照 corpus 对 DRILL 的先例「0 = unset，消费者归一」，于是裸 `Config{}` 也拿到 PRD 行为，而那个数只在 session 包里写一次。
+4. 链路：`ActivateResponse.turn_limit` → `ActivateResult.TurnLimit` → `SessionContext.TurnLimit`（**与 T1 同一个落点**）。
+5. `voicegateway`：`noteUserTurn` 在 collect goroutine 里计轮（`collecting` 的 CAS 保证一轮一次）；达上限置 `sessionComplete` 并投一句收尾指令。`markSessionComplete` 在 `sendOutbound` 给 `ai.turn.end` 盖章。
+6. `provider`：新可选接口 `SessionInstructionInjector`，方法是 **`QueueSessionInstruction`（排队，不是立即下发）** —— 只有 provider 知道 commit 边界在哪。`deliverPendingInstruction` 在 `CommitAudio` **之前** `UpdateInstructions`。
 
-**blocked-by**：D4；契约那一半 blocked-by infra（`schemas/` 先行）
+**完成判据与证据**
+- 判据 **11 条 / 4 个位置**：`internal/session/session_length_http_test.go`（5，走真 HTTP + 内部端点）、`internal/voicegateway/handler_turn_limit_test.go`（4，走真 WSS 握手）、`internal/voicegateway/provider_session_instruction_test.go`（2，provider 级）、`internal/voiceproto/frames_test.go` 的反射条（1）。
+- **先红后绿**：session 5 条先红（`turn_limit = 0, want 3` / `status = 200, want 400`）、gateway 4 条先红、voiceproto 反射条先红（`$defs.aiTurnEnd does not declare "session_complete"`）。
+- **N 来自配置而不是常量**：`TestTheTurnLimitIsWhateverActivationReported` 用子表 **1 与 3** 两轮跑同一条路径 ⇒ **写死 5 的实现必红**（这正是 §4 第 3 问要的）。另有 `TestActivate_MiniTurnLimitFollowsASecondConfiguredValue`（配 7）与 `TestActivate_UnsetMiniTurnLimitFallsBackToTheDefault`（未设 ⇒ 5）。
+- 反向：`standard` 不产生收尾指令、不产生终止信号（3 轮驱动）。
+- **变异 11 次，10 次被期望的测试咬住**。M8/M11 第一次都是**假信号**（丢 `skipped` / 去 `preload` 声明 ⇒ 变量未使用 ⇒ 编译失败 ⇒ 测试二进制没跑）；换成保持编译的变体后才咬住。**本仓第三次撞同一陷阱**（T5-a、T1、本票）。
+
+**两个不那么显然的决定（理由在这里，代码里只有一行注释）**
+- **终止信号是粘性的**：`sessionComplete` 一旦置位，之后**每个** `ai.turn.end` 都盖。它是**会话的属性**，不是一次性事件 —— 客户端漏读一帧不该就此静默，否则它再也等不到终止信号。
+- **注入必须交回它排空的事件**：`deliverPendingInstruction` 把这次等待**吞掉的厂商事件当 `preload` 交回** `WaitTurn`。不交回就是**静默丢转写**（厂商在音频上传期间就推 transcription，8s 等待会吃掉它），而旧的 `WaitTurnResult` 没有 preload 入口。**这是本票最容易漏掉的半张。**
+
+**⚠️ 未关闭 —— 端到端仍然是空的（与 T1 同一种残留）**
+契约与网关都就绪，但客户端**零命中**（`fluentwork-ios` 对 `session_length|session_complete|turn_limit` 全仓零命中）⇒ **今天没有任何调用方会要一场迷你会话**。
+
+**⚠️ 门禁第 7 步未验证**
+第 1-6 步绿（gofumpt / goimports / golangci-lint 0 issues / `go test ./...` / `go build` / 环境加载器 17 条）。**第 7 步 `check-dev-service.sh` 在本机跑不了**：它第 4 节用 `ps -o command= -p`，而该执行层 deny `ps`（`/bin/ps` 绝对路径也是 operation not permitted），脚本开了 `pipefail` ⇒ 127 被当成整条管道失败 ⇒ 中止。xtrace 实测第 **1-3 节 10 条断言零 ✘**，死在 4-10 节 ⇒ 那 7 节未验证。**待本地跑一次补上。**
+
+**残留（本票不做）**
+- 收尾指令是中文硬编码（`voicegateway.closingInstruction`）；PRD 未规定多语言口径。
+- 契约存在**第三份副本**（iOS `Shared/FluentWorkCore/Resources/Schemas/wss-control-frames-v2.json`），本票未同步 —— **两个仓都没有门禁校验副本一致**，留作 iOS 侧 follow-up（见 §7）。
+
+**blocked-by**：D4（按默认落地）；契约那一半 blocked-by infra（`schemas/` 先行）
 
 ---
 
@@ -218,8 +244,8 @@ PRD §9.3 的三条红线（首响 P90 ≤1.5s / 评价 ≤15s / 冷启动 ≤2.
 
 ```
 D1 ──→ T1 ✅ ─┐
-              ├──→ （T4 与 T1 同落点，建议同一批）
-D4 ──→ T4 ───┘        └──→ infra（契约）先行
+              ├──→ （T4 与 T1 同落点，已一批做掉）
+D4 ──→ T4 ✅ ─┘        └──→ infra（契约）先行 ✅ 17a4d91
 D3 ──→ T2
 D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提）
         T3 ✅（已完成）
@@ -229,12 +255,22 @@ D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提
         T6 / T7（并行，不阻塞）
 ```
 
-**建议顺序**：**T3 ✅ → T5-a ✅ → T2 → T1 ✅ → T4 → T5-b**
-下一步是 **T1-c / T4**：T1-c 是端到端的前提（属 D2 那条线），T4 与 T1 共用落点（`Activate` 的响应 + `SessionContext`）。
+**建议顺序**：**T3 ✅ → T5-a ✅ → T2 → T1 ✅ → T4 ✅ → T5-b**
 
-理由：T3 与 T5-a 都是**独立、可立刻开工、且做完就减少一处说谎的地方**（T3 把哑判据变真；T5-a 让一条测试从红变绿）；T2 次便宜但**当前两头都不该动**（见下）；T1 是解锁客户端的先决条件，改的是热路径（`Start` 接口），已完成并做了 7 次变异验证。
+**下一步没有可开工的服务端执行票了。** 本轮开工时 T4 是唯一未被阻塞的一张（T1-c / T2 撞 D2，T2-a 撞 D3，T5-b 撞 D1，T5-c 撞 UI），它落地后剩下的四类分别是：
 
-**T2 现在为什么卡住**：它的两个选项分别撞上两条默认 —— T2-a（补路由）违反 D3 默认（G1 本轮不做），T2-b（摘链）是**客户端数据层**改动、违反 D2 默认（本轮只排纯服务端票）。要动它得先拍 D3 或 D2 中的一条。
+| 剩票 | 卡在哪 | 谁来解 |
+|---|---|---|
+| **T1-c**（客户端把 `material_id` 传上来） | D2 —— 客户端数据层算不算 UI | Tango 拍 D2 |
+| **T2-b**（摘链）/ **T2-a 的客户端半张** | D3 / D2 | 见下节（T2-a 服务端已落地，工单原文已过期） |
+| **T5-b**（提炼产物） | D1 | Tango 拍 D1；**若 T1 选了 a，这张可以不做** |
+| **T5-c**（粘贴框字数与截断） | UI 未设计 | 设计 |
+| **T6 / T7** | 需要真机 / 需要一次真跑 | 硬件与联调窗口，不阻塞开发 |
+
+⇒ 本工单**服务端侧已清空**。继续推进只能靠拍 D1–D3 之一，或转去 `问题总清单-PRD模块轴.md` §4.2 ① 那批**纯客户端补件**（§4.2 ① 里「后端已就绪」的那些）。
+
+**T2 现在为什么卡住**：它的两个选项分别撞上两条默认 —— T2-a（补路由）违反 D3 默认（G1 本轮不做），T2-b（摘链）是**客户端数据层**改动、违反 D2 默认（本轮只排纯服务端票）。
+⚠️ **但 T2 的服务端半张已经落地**（backend `4035f12`：Store 加 `GetRefreshToken` + `Service.Refresh` + `POST /auth/refresh`；轮换靠 `issueSession` 里既有的「先删该用户全部令牌再插新的」）。**本文档 T2 一节的「零命中」实测结论已过期**；客户端那半张在 iOS 工作区里在途未提交（`AuthTokenStoreProtocol.refreshToken()` 等 10 个文件）。
 
 ---
 
@@ -267,3 +303,25 @@ D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提
 2. 每关一张票：在本文对应行标 ✅，补**提交哈希**与一句话结论。
 3. **决策票关掉时，把结论写回 D 那一节**，并把受影响的执行票的"未拍板前按…"改掉。
 4. 新增问题直接进表，不另开文档。
+
+---
+
+## 7. 跨仓债务：共享契约其实有**三份**副本，没有门禁守它们
+
+写下这条是因为它会在**每一次**契约变更里复发，而且不红。
+
+真源只有一处：`fluentwork-infra/schemas/transport/wss-control-frames-v2.json`。但它有两份**被 check-in 的下游镜像**，各由一个同名的 `scripts/sync-shared-schemas.sh` 抄过去：
+
+| 副本 | 路径 | 消费方 |
+|---|---|---|
+| 真源 | `fluentwork-infra/schemas/transport/…` | CI 的 `check-schema-freeze.sh` / `check-repo-structure.sh` |
+| ② | `fluentwork-backend/schemas/transport/…` | `schemas/embed.go` 的 `go:embed` + `voiceproto` 的反射式契约测试 |
+| ③ | `fluentwork-ios/Shared/FluentWorkCore/Resources/Schemas/…` | `SharedSchemaMirror` + `PackageBaselineTests` |
+
+**坏消息**：两个仓的 `setup-git-hooks.sh` 与各自的落地门禁**都不校验副本是否一致**（查过，没有）。⇒ 改了真源忘了同步某一份，**没有任何东西会红**。
+
+**半好消息**：iOS 那份的测试只断言字段**存在**、从不断言**不许多字段**（`Tests/FluentWorkCoreTests/PackageBaselineTests.swift`）⇒ 同步过去只会让它更全，不会弄红。
+
+**本票实例**：T4 加了 `session_complete` 后，② 已同步；**③ 未同步**（实测 `diff` 显示 ③ 缺该字段，而 `log_id` 在 —— 说明这份副本此前是被维护的，属于新增漂移）。未随本票改 iOS 是因为 iOS 工作区里另有在途未提交的改动（T2 客户端半张），混进去会污染那个提交。
+
+**要不要补一条门禁**（在 infra 加一个「三份副本 sha256 相等」的检查）：是独立的一张票，不在本工单范围内 —— 但要补就应该**先写那条检查并确认它红**（今天 ③ 就是红的），否则又是一处「看起来有保护、实际没有」。
