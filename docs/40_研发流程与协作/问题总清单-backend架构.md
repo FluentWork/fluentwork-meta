@@ -34,11 +34,16 @@
 > | BE-S1-3 解码器 fuzz | `cb99ba3` test(voiceproto): 给手写二进制解码器补上全仓第一个 fuzz |
 > | BE-S1-6 音频热路径 benchmark | `46bd534` test(voicegateway): 给音频热路径补上全仓第一个 benchmark，并据此否掉那条怀疑 |
 > | BE-S1-7 `providerErrorStrategies` | `8c6792c` fix(voicegateway): 让 provider 失败码只有一个来源，并钉住策略表的每一行都真被转发 |
+> | BE-S2-6 `/metrics` 行序 | `8325795` fix(metrics): 5 处 /metrics 标签不再按 map 迭代序输出 |
 >
 > ⇒ **这批恰好是按本文件 §5 旧版的顺序做的**（旧文「只做三件事」的第 1、2 条被
 > 逐条落实）。**所以根因不是清单写错了，是清单没有收口环节** —— 做完没人回来标 ✅，
 > 下一个人于是从一份已经兑现的推荐里再挑一遍。§6「推进方式」那套收口纪律写在
 > [`PRD核心业务逻辑落地工单.md`](./PRD核心业务逻辑落地工单.md) §6，本文件没有对应的一节。
+>
+> ⚠️ **本轮（同一天第二轮）又演进了一次**：按上面那次重排，第 1 顺位是 `BE-S2-6`，
+> 做完后又重排了一次（现在是「二次重排」）。**这份清单一天里重排了两次，每次都要人肉回来改 ——
+> 收口环节仍然缺着，只是这次没让它烂掉。**
 
 
 ### 0. 这份清单怎么读
@@ -134,7 +139,7 @@
 | BE-S2-3 | `uplink_constants.go` 的注释说「两份 uplink 路径都用这个常量」，实际 `voiceduplex` 有自己的 `uplinkChunkBytes` | `01` §2.5 | ❌ **仍开着** |
 | BE-S2-4 | `httpserver` 的 `discovery` 手写了一份**部分**端点清单（列了 tts/hits/history/privacy/materials/topic_cards，没列 drill/corpus/content） | `01` §2.3 的边表 | ❌ **仍开着，逐字未变** |
 | BE-S2-5 | `/metrics` 是 7 个包手写文本的拼接，无 registry、无重名检测 | `01` §1 | ❌ **仍开着** |
-| BE-S2-6 | **7 个指标发射器里只有 2 个对 label 集合排序**，另外 4 个用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 | ❌ **仍开着，仍是 2 / 7** |
+| BE-S2-6 | **指标发射器里只有一部分对 label 集合排序**，其余用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 | ✅ **已完成**（backend `8325795`） |
 | BE-S2-7 | `test/` 是空目录（只有 `.gitkeep`） | `04` §3.3 | ❌ **仍开着** |
 | BE-S2-8 | 51 个环境变量没有一份清单（唯一来源是两个 `Config` 结构体） | `03` §4.1 | ❌ **仍开着，且比旧文更可量化** |
 
@@ -145,7 +150,7 @@
 - **BE-S2-3 ❌ 仍开着** —— `voicegateway/uplink_constants.go:12` 是 `const UplinkChunkBytes = 640`，`voiceduplex/volc_duplex.go:956-957` 另有 `uplinkChunkBytes`（注释「20ms of 16 kHz mono s16le (640 bytes)」），数值一致但**改一处不会让另一处红**。
 - **BE-S2-4 ❌ 仍开着，逐字未变** —— `httpserver/server.go:162-179` 的 `discovery` 仍是那六个键（`tts` / `hits` / `history` / `privacy` / `materials` / `topic_cards`），仍然没有 `drill` / `corpus` / `content`。
 - **BE-S2-5 ❌ 仍开着** —— `server.go:181-185` 的 `serveMetrics` 仍是 `tts.PrometheusMetrics()+corpus.PrometheusMetrics()+drill.PrometheusMetrics()+account.PrivacyPrometheusMetrics()+review.PrometheusMetrics()+materials.PrometheusMetrics()+topic.PrometheusMetrics()`；`prometheus` / `registry` 在 `internal/httpserver/` 与 `pkg/` 零命中。
-- **BE-S2-6 ❌ 仍开着** —— 逐文件实测见下表，仍是 2 / 7。
+- **BE-S2-6 ✅ 已完成**（backend `8325795`）—— 5 处补排序，判据先红后绿，见下表。
 - **BE-S2-7 ❌ 仍开着** —— `ls test/` 只有 `.gitkeep`（1 字节）。
 - **BE-S2-8 ❌ 仍开着，且比旧文更可量化** —— 把两侧对了一遍：`configs/*.env.example` 声明 **27** 个变量，代码里 **读** 了 **42** 个 ⇒ **21 个只被读、没被声明**（`APP_BASE_URL` / `APP_RUN_REVIEW_WORKER` / `ARK_PRICING_FILE` / `ARK_THINKING` / `DRILL_DAILY_NEW_BLOCK_LIMIT` / `DRILL_PROMOTE_STREAK` / `DRILL_ROUND_SIZE` / `MINI_SESSION_TURN_LIMIT` / `MYSQL_DSN` / `TOPIC_MIN_BLOCKS` / `VOICE_CLIENT_ASR_REQUIRED` / `VOICE_DEV_ECHO_FIXTURE` / `VOICE_DEV_ECHO_TEXT` / `VOLC_DUPLEX_MODEL` / `VOLC_DUPLEX_VOICE` / `VOLC_POC_*`(4) / `VOLC_SPEECH_RESOURCE_TTS` / `VOLC_T9_TRIALS` / `WORKER_ID`）。
   ⚠️ **这不是纯文档问题**：`dev-up.sh:123-124` 在没有真实 env 文件时**会把 `configs/app-server.env.example` 当环境文件加载** ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。**本次已顺手补上 `MINI_SESSION_TURN_LIMIT`**（backend `4cd446a`，T4 的收尾），其余 20 个未动。
@@ -154,20 +159,31 @@
 
 **BE-S2-4 值得单独说**：`discovery` 是一个**手写的路由表副本**，而路由表本身是 nil-gated 动态挂载的（`httpserver/server.go:93-129`）。所以「服务有哪些端点」这个问题，**在代码里没有一个地方能一次回答清楚**。它和 iOS 的 `TransportEventRouter` 形成对照：那边是一张**静态可断言**的表（`80_/README` G5）。
 
-**BE-S2-6 的实测明细（2026-09-26 复核，逐文件 `grep -E 'slices\.Sort|sort\.'`）**：
+**BE-S2-6 的实测明细（2026-09-26 复核）**：
 
-| 发射器 | 对 label 集合排序 | 复核注 |
+先纠正旧文的计数口径：**7 个发射器里只有 6 个带 label map**（`review/metrics.go` 只有两个无标签计数器），
+带标签的渲染块共 8 处，**修复前只有 3 处排序**。旧文把 `topic` 记成 ✅ **是错的** —— ✅ 只对了它的
+`dismissals`，同一个函数里紧挨着的 `skips` 是裸 map range。**旧文的「2 / 7」既数错了文件，也漏掉了主题那半边。**
+
+| 带标签的渲染块 | 修复前 | 复核注 |
 |---|---|---|
-| `internal/corpus/metrics.go` | ✅ | |
-| `internal/topic/metrics.go` | ✅ | |
-| `internal/drill/metrics.go` | ❌ | **已经收进 `keys` 切片**（`:62-66`，不再是纯 map range），但**没有排序** —— 注释写着 `stable-ish: unsorted ok for tests Contains` ⇒ 是不确定序，不是 map 随机序，后果一样 |
-| `internal/materials/metrics.go` | ❌ | `:45` 仍是直接的 `for key, n := range transitions` |
-| `internal/content/tts/metrics.go` | ❌ | |
-| `internal/account/privacy_metrics.go` | ❌ | |
+| `corpus` `deprecated_post_favorite_total{user_agent}` | ✅ | |
+| `corpus` `block_feedback_total{reason}` | ✅ | |
+| `topic` `dismissed_total{reason}` | ✅ | |
+| `topic` `gen_skipped_total{reason}` | ❌ | **旧文把它所在的文件记成 ✅** —— 讽刺的是同一函数里两个 map，一个排了、一个没排 |
+| `drill` `state_transition_total{from,to}` | ❌ | 已经收进 `keys` 切片，但**没有排序**，注释写着 `stable-ish: unsorted ok for tests Contains` ⇒ 是不确定序，后果一样 |
+| `materials` `refine_status_transition_total{from,to}` | ❌ | 裸 `for key, n := range transitions` |
+| `tts` `route_hits_total{voice_id}` | ❌ | |
+| `account` `tombstone_inserted_total{entity_type}` | ❌ | |
 
-**7 个里 2 个排序，与旧文一致。** 顺序本身对 Prometheus 不构成错误（行的顺序无语义），但后果是具体的：**`/metrics` 的输出不可复现** —— 不能 diff 两次 scrape、不能在测试里断言整段文本、肉眼扫的时候每次位置都变。而且仓里**两种做法并存**，所以这不是「还没做」，是「做了一半」。
+**修复（backend `8325795`）**：5 处照 `corpus` 的既有形状 —— 先收 key、`sort.Strings`、再渲染。
+判据是旧文自己写的那句（「同一状态渲染两次必须逐字节相同」）：5 个包各一条
+`TestMetricsRenderingIsReproducible`，渲染 17 次要求逐字节相同，**改之前五条全红**。
 
-⇒ **这是 §5 重排后的第一顺位**，因为它有一条**能写的判据**：「同一状态渲染两次必须逐字节相同」。这条今天会红（drill 的 `keys` 是切片但未排序，materials 还是 map range）。
+⚠️ **留下一条更值得记的教训**：这条缺陷能被留下来，是因为**既有判据只做 `strings.Contains`** ——
+行序从来没有东西守。所以新判据每条前面加了一道**反空洞**断言（渲染出的 label 行数必须不少于塞进去的键数），
+并用变异确认它真会咬（`if len(transitions) == 0` → `if true` 时红在「want at least 3」）。
+**否则哪天标签块不再渲染，这条测试会比较两个占位结果而静默通过。**
 
 **确定性：【实测】。**
 
@@ -190,15 +206,16 @@
 
 ---
 
-### 5. 如果只做三件事（2026-09-26 重排）
+### 5. 如果只做三件事（2026-09-26 二次重排）
 
-⚠️ **旧版的三条里两条已经做完了**（BE-S1-1 ✅ `25a015e`；BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`）。以下是按**同一判据**（不做会怎样）重排的结果，且只从**复核后确认 ❌** 的条目里挑。
+⚠️ **旧版的三条已经全部做完**（BE-S1-1 ✅ `25a015e`；BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`），
+**本版重排的第 1 顺位也做完了**（BE-S2-6 ✅ `8325795`）。以下是同一判据下的第三顺位，且只从**复核后确认 ❌** 的条目里挑。
 
-1. **BE-S2-6（4 / 7 个指标发射器不排序）** —— 唯一一条**后果可以直接写成判据**的：「同一状态渲染两次必须逐字节相同」。这条判据**今天会红**。而且它是本表里少见的「做了一半」形状 —— corpus / topic 已经对了，照抄即可。
-2. **BE-S2-4 + BE-S2-5（`discovery` 与 `/metrics` 各有一份手写副本）** —— 两条同源：「服务有哪些端点 / 哪些指标」在代码里**没有一个地方能一次答清**。§7 拿它跟 iOS 的 `TransportEventRouter` 对照（那边是一张**静态可断言**的表），backend 这边两处都是手抄。`BE-S2-4` 尤其具体：六个键里少了三块（`drill` / `corpus` / `content`）。
-3. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下三条 S1 里**唯一既不需要决定、也不需要动契约**的一条（另两条：`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试卫生）。它是 S1 是因为「不做会在下一次同类缺陷上再花一遍时间」：每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
+1. **BE-S2-4 + BE-S2-5（`discovery` 与 `/metrics` 各有一份手写副本）** —— 两条同源：「服务有哪些端点 / 哪些指标」在代码里**没有一个地方能一次答清**。§7 拿它跟 iOS 的 `TransportEventRouter` 对照（那边是一张**静态可断言**的表），backend 这边两处都是手抄。`BE-S2-4` 尤其具体：六个键里少了三块（`drill` / `corpus` / `content`）。
+2. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下三条 S1 里**唯一既不需要决定、也不需要动契约**的一条（另两条：`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试卫生）。它是 S1 是因为「不做会在下一次同类缺陷上再花一遍时间」：每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
+3. **BE-S2-8（21 个环境变量只被读、没被声明）** —— 三条 S2 里唯一**后果落在开发环境里**的一条：`dev-up.sh:123-124` 在没有真实 env 文件时会把 `configs/*.env.example` 当环境文件加载 ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。而且**判据形状已经有了**（`TestVolcEnvExampleCarriesTheGatewayWiring` 断言的就是模板），只是没铺开。
 
-**为什么这次 S2 排到了 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的三条**（一次重构 / 一次契约变更 / 一次测试夹具收敛），而上面第 1、2 条成本低、各自自带一条能红的判据。分级答的是「不做会怎样」，不是「先做哪一个」。
+**为什么这次 S2 排到了 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的三条**（一次重构 / 一次契约变更 / 一次测试夹具收敛），而上面第 1、3 条成本低、各自自带一条能红的判据。分级答的是「不做会怎样」，不是「先做哪一个」。
 
 **BE-S0-1 已从这张表里出局**（2026-09-26 复核）：四仓代码都落地了，剩下真机跑与冻结产物摘要重核，见 §8。它当初被排除在「三件事」之外的理由是**它不能单独做**（需要协议版本、两侧同时改、先确认没有老客户端）—— 而这个理由后来被**一次专门排期**解决了。**它不是被塞进「三件事」里做掉的，是单独做掉的**，这个区分值得留着：S0 的条目不该为了「凑进三件事」而开工。
 

@@ -51,8 +51,18 @@
 
 **为什么必须定**：决定 T2 走哪条路。注册登录要短信服务商（资质 + 成本 + 合规），**不是工程决定**。
 
-**我建议**：G1 本轮不做 ⇒ **T2 走 b（摘链）**。理由：补一条没有服务对象的 `/auth/refresh`，等于亲手造出第二处「看起来有保护、实际没有」—— 而本仓已经撞到十次以上。
-**未拍板前按 b 写。**
+**我建议**：G1 本轮不做 ⇒ ~~**T2 走 b（摘链）**~~。理由：补一条没有服务对象的 `/auth/refresh`，等于亲手造出第二处「看起来有保护、实际没有」—— 而本仓已经撞到十次以上。
+~~**未拍板前按 b 写。**~~
+
+**✅ 实际拍板（2026-09-26）：走了 a（补路由），与上面这条建议相反。**
+记录这个分歧，因为它不是笔误：**「没有服务对象」这个前提不成立** —— 客户端本来就在调
+`/auth/refresh`（`AuthenticatedNetworkClient.swift:72`，生产上由 corpus / dailyRead /
+sessionHistory 三个客户端共用），所以**补路由不是造一个空端点，是把一条已经存在的死路接上**。
+D3 真正要拦的是 G1（注册 / 登录 / 短信 / 邮箱验证码），T2-a 不碰这些。
+**⇒ 教训：建议里的理由要连同它的前提一起写。** 这里前提（"没有服务对象"）是可实测的，
+一旦实测为假，建议就该被推翻 —— 但原文只留了结论，读者（包括我）会照结论走。
+
+⇒ **T2 已按 a 完成**（服务端 `4035f12` / 客户端 `be85ca6`）。
 
 ### D4 — 迷你会话的回合上限由谁定、定几轮？
 
@@ -104,26 +114,40 @@
 
 ---
 
-### T2 — 消除 `/auth/refresh` 这条 404 死路（G1 的前置）
+### T2 — 消除 `/auth/refresh` 这条 404 死路（G1 的前置）｜✅ 已完成（选了 T2-a）
 
 **目标**：让「客户端在调、后端没有」这件事消失。
 
-**现状（证据）**
+**✅ 结论：选了 T2-a（补路由），服务端与客户端两半都已落地。**
+
+| 半张 | 提交 | 内容 |
+|---|---|---|
+| 服务端 | backend `4035f12` | `account.RegisterRoutes` 加 `POST /auth/refresh`（`internal/account/http.go:32`）；`Service.Refresh`（`internal/account/service.go:205`）校验 refresh token → 换 `TokenResponse`；轮换靠 `issueSession` 里既有的「先删该用户全部令牌再插新的」。测试 `internal/account/refresh_http_test.go` 覆盖有效凭证 / **重放旧凭证换不动** / 空体 / 访客令牌 |
+| 客户端 | iOS `be85ca6` | `AuthTokenStoreProtocol.refreshToken()` 读存储里的刷新凭证；`SessionAPIClient.refreshToken` 改成 **拿 refresh token 换 `TokenResponse`**（原来把**过期的 access token**当凭证发出去）；`TokenRefreshCoordinator` 刷新后把**整对令牌**落库 |
+
+**字段形状已逐字对齐**（这是「能跑通」而不是「两边都改了」的证据）：服务端 `account.TokenResponse`
+的 JSON 键（`user_id` / `is_guest` / `status` / `access_token` / `refresh_token` / `token_type` / `expires_in`）
+与 iOS `TokenResponse` 的 `CodingKeys` 完全一致，且 `refresh_token` 两边都必填。
+
+⚠️ **仍未验证的是真机那一跳**（401 → 刷新 → 重试）—— 本票关的是「404 死路消失」，
+**不是「刷新链路在真机上端到端可用」**。
+
+**原状（保留作对照）**
 - 客户端整条链是接上的：`FluentWorkAPI.swift:62-63` → `/auth/refresh`；`TokenRefreshCoordinator.swift:122`；`AuthenticatedNetworkClient.swift:72`（生产调用点）；`AppDependencies.swift:526-533` 的 `networkClient` 把它交给 **corpus / dailyRead / sessionHistory 三个客户端**（`:544-570`）【读码】
-- 后端：`grep -rn "auth/refresh" fluentwork-backend/` **零命中**（含 `api/openapi-v1.yaml`）【实测】
+- ~~后端：`grep -rn "auth/refresh" fluentwork-backend/` **零命中**~~ ⇒ **已于 `4035f12` 过期**
 - 访客 access token TTL = **2 小时**（`internal/config/config.go:20`）【读码】
 - 已有件：`account.Store.ReplaceRefreshToken` / `DeleteRefreshTokensForUser`（`store.go:31-32`）；`token.go:49` 已在签发 refresh token【读码】
 
 **两个选项（见 D3）**
 
-- **T2-a 补路由**：`account.RegisterRoutes`（`internal/account/http.go:30-36`）加 `POST /auth/refresh`；请求体带 refresh token；**轮换**（旧的立即作废）。
+- **✅ T2-a 补路由**：`account.RegisterRoutes`（`internal/account/http.go:30-36`）加 `POST /auth/refresh`；请求体带 refresh token；**轮换**（旧的立即作废）。
   判据：① 有效 refresh token 换到新 access token；② **旧 refresh token 换不动了**（轮换必须单独一条，否则"没有轮换"的实现也能过）；③ 访客令牌也能刷。
-- **T2-b 摘链**（默认）：客户端 401 时改成**重发访客令牌** —— 这条路已经存在（`DefaultSpeechSessionClient.swift:294-310` 的 `ensureAccessToken` 就是这么干的）；删掉 `TokenRefreshCoordinator` 的调用点与 `/auth/refresh` 那个 case。
+- **T2-b 摘链**（原默认，**未选**）：客户端 401 时改成**重发访客令牌** —— 这条路已经存在（`DefaultSpeechSessionClient.swift:294-310` 的 `ensureAccessToken` 就是这么干的）；删掉 `TokenRefreshCoordinator` 的调用点与 `/auth/refresh` 那个 case。
   判据：① 一条测试断言「401 之后重发访客令牌并重试一次」；② 全仓 `/auth/refresh` 零命中。
 
 **明确不做**：不实现注册 / 登录 / 短信 / 邮箱验证码（那是 G1，见范围外）。
 
-**blocked-by**：D3
+**blocked-by**：~~D3~~ ⇒ **D3 已按 T2-a 拍板**（服务端侧不做注册/登录，只把那一条路由补上，属「消除死路」而非「上 G1」）。
 
 ---
 
@@ -246,7 +270,7 @@ PRD §9.3 的三条红线（首响 P90 ≤1.5s / 评价 ≤15s / 冷启动 ≤2.
 D1 ──→ T1 ✅ ─┐
               ├──→ （T4 与 T1 同落点，已一批做掉）
 D4 ──→ T4 ✅ ─┘        └──→ infra（契约）先行 ✅ 17a4d91
-D3 ──→ T2
+D3 ──→ T2 ✅（a）
 D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提）
         T3 ✅（已完成）
         T5-a ✅（已完成）
@@ -255,22 +279,23 @@ D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提
         T6 / T7（并行，不阻塞）
 ```
 
-**建议顺序**：**T3 ✅ → T5-a ✅ → T2 → T1 ✅ → T4 ✅ → T5-b**
+**建议顺序**：**T3 ✅ → T5-a ✅ → T2 ✅ → T1 ✅ → T4 ✅ → T5-b**
 
-**下一步没有可开工的服务端执行票了。** 本轮开工时 T4 是唯一未被阻塞的一张（T1-c / T2 撞 D2，T2-a 撞 D3，T5-b 撞 D1，T5-c 撞 UI），它落地后剩下的四类分别是：
+**服务端执行票已全部清空。** T4 是最后一张未被阻塞的服务端票；T2 的两半随后也各自落地
+（服务端 `4035f12` 早已在树里，客户端半张 `be85ca6`）。剩下的分别是：
 
 | 剩票 | 卡在哪 | 谁来解 |
 |---|---|---|
 | **T1-c**（客户端把 `material_id` 传上来） | D2 —— 客户端数据层算不算 UI | Tango 拍 D2 |
-| **T2-b**（摘链）/ **T2-a 的客户端半张** | D3 / D2 | 见下节（T2-a 服务端已落地，工单原文已过期） |
 | **T5-b**（提炼产物） | D1 | Tango 拍 D1；**若 T1 选了 a，这张可以不做** |
 | **T5-c**（粘贴框字数与截断） | UI 未设计 | 设计 |
 | **T6 / T7** | 需要真机 / 需要一次真跑 | 硬件与联调窗口，不阻塞开发 |
 
-⇒ 本工单**服务端侧已清空**。继续推进只能靠拍 D1–D3 之一，或转去 `问题总清单-PRD模块轴.md` §4.2 ① 那批**纯客户端补件**（§4.2 ① 里「后端已就绪」的那些）。
+⇒ 继续推进只能靠拍 D1 / D2 之一，或转去 `问题总清单-PRD模块轴.md` §4.2 ① 那批**纯客户端补件**（§4.2 ① 里「后端已就绪」的那些）。
 
-**T2 现在为什么卡住**：它的两个选项分别撞上两条默认 —— T2-a（补路由）违反 D3 默认（G1 本轮不做），T2-b（摘链）是**客户端数据层**改动、违反 D2 默认（本轮只排纯服务端票）。
-⚠️ **但 T2 的服务端半张已经落地**（backend `4035f12`：Store 加 `GetRefreshToken` + `Service.Refresh` + `POST /auth/refresh`；轮换靠 `issueSession` 里既有的「先删该用户全部令牌再插新的」）。**本文档 T2 一节的「零命中」实测结论已过期**；客户端那半张在 iOS 工作区里在途未提交（`AuthTokenStoreProtocol.refreshToken()` 等 10 个文件）。
+**T2 已关闭（见上）**：服务端 `4035f12` + 客户端 `be85ca6`，选的是 **a（补路由）**。
+⚠️ 仍未验证的是**真机那一跳**（401 → 刷新 → 重试）—— 关掉的是「404 死路消失」，
+**不是「刷新链路在真机上端到端可用」**。
 
 ---
 
@@ -322,6 +347,17 @@ D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提
 
 **半好消息**：iOS 那份的测试只断言字段**存在**、从不断言**不许多字段**（`Tests/FluentWorkCoreTests/PackageBaselineTests.swift`）⇒ 同步过去只会让它更全，不会弄红。
 
-**本票实例**：T4 加了 `session_complete` 后，② 已同步；**③ 未同步**（实测 `diff` 显示 ③ 缺该字段，而 `log_id` 在 —— 说明这份副本此前是被维护的，属于新增漂移）。未随本票改 iOS 是因为 iOS 工作区里另有在途未提交的改动（T2 客户端半张），混进去会污染那个提交。
+**本票实例（已收尾）**：T4 加了 `session_complete` 后，② 随本票同步（`5320818`）；
+③ 当时**未同步**（实测 `diff` 显示 ③ 缺该字段，而 `log_id` 在 —— 说明这份副本此前是被维护的，
+属于新增漂移），延期的理由是「iOS 工作区里另有在途未提交的改动（T2 客户端半张），混进去会污染提交」。
+**那个理由已随 T2 客户端半张提交（`be85ca6`）消失**，③ 已在 iOS `721554b` 用
+`Scripts/sync-shared-schemas.sh` 同步，同步前后各跑一次 `swift test`（626 / 30 全绿）。
+⇒ **三份副本今天一致。**
+
+⚠️ **但这只说明今天对了，不说明以后会红** —— 而且**同步之后这条检查更弱了**：
+现在三份一致，再补一条「三份 sha256 相等」的门禁，它**在今天必然是绿的**，
+按本仓的纪律（「先写判据并确认它红」）就等于又造一处看起来有保护的东西。
+要补就得**用变异证明它会咬**（把任意一份的某个字段删掉，确认检查红）。
+**要不要补是一条独立决定，不在本工单范围内。**
 
 **要不要补一条门禁**（在 infra 加一个「三份副本 sha256 相等」的检查）：是独立的一张票，不在本工单范围内 —— 但要补就应该**先写那条检查并确认它红**（今天 ③ 就是红的），否则又是一处「看起来有保护、实际没有」。
