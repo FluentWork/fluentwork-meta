@@ -127,7 +127,7 @@ flashRoot: {
 
 | ID | PRD 要求 | 现状 | 缺的是哪一段 | 确定性 |
 |---|---|---|---|---|
-| **A1** | 粘贴 **≤2000 字**；AI 提炼；**5 秒内展示供确认 + 有预期的 loading** | 🟡 | **客户端零**。后端 `POST /materials`（`internal/materials/http.go:27`）在，`kind` 支持 `paste`（`internal/materials/service.go:53-56`）。iOS 无入口、无 `MaterialsAPIClient`。⚠️ **另有口径不一致**：后端上限是 **5000 字节**（`internal/materials/model.go:25-26` `MaxContentLen = 5000`，在 `service.go:68` 用 `len(content)` 判），而 PRD 写的是 **2000 字**。中文 UTF-8 三字节 ⇒ 5000 字节 ≈ **1666 字**，比 PRD 更严；英文则更松 | 【读码】 |
+| **A1** | 粘贴 **≤2000 字**；AI 提炼；**5 秒内展示供确认 + 有预期的 loading** | 🟡 | **客户端零**。后端 `POST /materials`（`internal/materials/http.go:27`）在，`kind` 支持 `paste`（`internal/materials/service.go:53-56`）。iOS 无入口、无 `MaterialsAPIClient`。**上限口径已部分收口**（backend `686b74e`）：**单位**修好了（`service.go:69` 改 `utf8.RuneCountInString`；此前 `len()` 是字节 ⇒ 中文 5000 字节 ≈ 1666 字，比 PRD 更严、会 400 掉合法的 2000 字输入）；**值**仍是 **5000 字符**而 PRD 写 **2000 字** —— UI 文档要的是「超限**截断**」不是拒绝，故 2000 是**客户端 UX 上限**，服务端 5000 字符是安全网。⇒ **2000 这个数今天没有任何执行点**（服务端 5000、客户端零）。见工单 T5-a / T5-c | 【读码】 |
 | **A2** | 一句话场景描述（≥10 字，≤1 秒不阻塞）；**创建弹层的默认入口** | 🟡 | 后端 `kind=sentence` 支持（同上）；**客户端零**。PRD 称它是「冷启动摩擦最低的路径」，而这条路径不存在 | 【读码】 |
 | **A3** | 预置场景卡 Daily Standup，一键进入无需输入 | 🟡 | 场景在客户端**硬编码为字符串** `"standup"`（`DefaultSpeechSessionClient.swift:94` / `:110` / `:129`），**没有卡片 UI，也没有「一键进入」的入口** | 【读码】 |
 | **A4** | 输入框常驻隐私声明；设置页「删除我的全部素材」二次确认即时生效 | 🟡 | 后端两条都在（`internal/account/http.go:34-35` `DELETE /account/data` + `POST /account/export`，`internal/account/privacy_service.go` 有级联 wiper）。**客户端：无输入框、设置页无删除入口** | 【读码】 |
