@@ -35,6 +35,8 @@
 > | BE-S1-6 音频热路径 benchmark | `46bd534` test(voicegateway): 给音频热路径补上全仓第一个 benchmark，并据此否掉那条怀疑 |
 > | BE-S1-7 `providerErrorStrategies` | `8c6792c` fix(voicegateway): 让 provider 失败码只有一个来源，并钉住策略表的每一行都真被转发 |
 > | BE-S2-6 `/metrics` 行序 | `8325795` fix(metrics): 5 处 /metrics 标签不再按 map 迭代序输出 |
+> | BE-S2-6 **判据修正** | `82bd06e` test(metrics): 判据只该要求行序稳定，不该要求数值稳定 |
+> | BE-S2-4 + BE-S2-5 端点/指标 | `a003b16` feat(httpserver): 端点与指标各有一处能一次答清 |
 >
 > ⇒ **这批恰好是按本文件 §5 旧版的顺序做的**（旧文「只做三件事」的第 1、2 条被
 > 逐条落实）。**所以根因不是清单写错了，是清单没有收口环节** —— 做完没人回来标 ✅，
@@ -44,6 +46,16 @@
 > ⚠️ **本轮（同一天第二轮）又演进了一次**：按上面那次重排，第 1 顺位是 `BE-S2-6`，
 > 做完后又重排了一次（现在是「二次重排」）。**这份清单一天里重排了两次，每次都要人肉回来改 ——
 > 收口环节仍然缺着，只是这次没让它烂掉。**
+>
+> ⚠️ **第三轮（同一天第三批）：两条复核方法上的教训，比条目本身值钱**
+>
+> 1. **「零消费方」的结论不能用 `grep -v _test.go` 得出。** 我判定 `discovery`
+>    无人消费时恰好把它唯一的消费方（一条测试）筛掉了，于是差点把一次载荷形状变更
+>    当成免费的。**与 BE-S1-7 同型、且是同一个坑的第二次**：搜不到标识符 ≠ 没有这个行为。
+> 2. **变异跑出「存活」时，先怀疑判据，再怀疑实现。** M4 把内部前缀改成永不匹配以关掉
+>    过滤，判据却绿 —— 因为 `account.RegisterInternalRoutes` 在 privacy 服务缺失时**早退**，
+>    测试里从来没有挂过内部路由，那条「不泄露内部面」的断言**恒真**。
+>    **判据可以被写成恒真的，而它看起来和真判据一模一样。**
 
 
 ### 0. 这份清单怎么读
@@ -137,9 +149,10 @@
 | BE-S2-1 | `AGENTS.md:22` 把 `internal/corpus/` 写成 `internal/corpuss/`（照图找目录找不到） | `01` §4.3 | ✅ **已修**（全仓无 `corpuss`） |
 | BE-S2-2 | `handler.go:776-778` 有一段**描述不存在的函数** `resolvedUserText` 的孤儿注释 | `02` §3.5 | ❌ **仍开着，且比旧文更糟** |
 | BE-S2-3 | `uplink_constants.go` 的注释说「两份 uplink 路径都用这个常量」，实际 `voiceduplex` 有自己的 `uplinkChunkBytes` | `01` §2.5 | ❌ **仍开着** |
-| BE-S2-4 | `httpserver` 的 `discovery` 手写了一份**部分**端点清单（列了 tts/hits/history/privacy/materials/topic_cards，没列 drill/corpus/content） | `01` §2.3 的边表 | ❌ **仍开着，逐字未变** |
-| BE-S2-5 | `/metrics` 是 7 个包手写文本的拼接，无 registry、无重名检测 | `01` §1 | ❌ **仍开着** |
-| BE-S2-6 | **指标发射器里只有一部分对 label 集合排序**，其余用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 | ✅ **已完成**（backend `8325795`） |
+| BE-S2-4 | `httpserver` 的 `discovery` 手写了一份**部分**端点清单（列了 tts/hits/history/privacy/materials/topic_cards，没列 drill/corpus/content） | `01` §2.3 的边表 | ✅ **已完成**（backend `a003b16`） |
+| BE-S2-5 | `/metrics` 是 7 个包手写文本的拼接，无 registry、无重名检测 | `01` §1 | ✅ **已完成**（backend `a003b16`） |
+| BE-S2-6 | **指标发射器里只有一部分对 label 集合排序**，其余用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 | ✅ **已完成**（backend `8325795`；**判据本身在 `82bd06e` 修正**，见下） |
+| BE-S2-9 | `tts` 的 `TestRouter_Stream_RouteHit` 断言全局计数器的**绝对值**（`expected 1 hit for voice-a, got 2`） | 本次复核新发现 | ❌ **仍开着** —— `-count>1` 必红；门禁固定 `-count=1`，所以从未暴露 |
 | BE-S2-7 | `test/` 是空目录（只有 `.gitkeep`） | `04` §3.3 | ❌ **仍开着** |
 | BE-S2-8 | 51 个环境变量没有一份清单（唯一来源是两个 `Config` 结构体） | `03` §4.1 | ❌ **仍开着，且比旧文更可量化** |
 
@@ -148,16 +161,20 @@
 - **BE-S2-1 ✅** —— 在 `AGENTS.md` 里搜 `corpuss` 零命中；第 96 行现在写的是 `corpus-seed`。
 - **BE-S2-2 ❌ 仍开着，且比旧文更糟** —— 不是「一段孤立注释」，而是**并进了别的函数的文档注释**：`handler.go:862-868` 是 `extractServerASRText` 的 doc，其中 3 行（「resolvedUserText returns the user's utterance…」）描述的是**另一个函数**，中间还空了一行；而全仓 **没有 `resolvedUserText` 的定义**（只有这一处注释命中，`grep "func.*resolvedUserText"` 零命中）。
 - **BE-S2-3 ❌ 仍开着** —— `voicegateway/uplink_constants.go:12` 是 `const UplinkChunkBytes = 640`，`voiceduplex/volc_duplex.go:956-957` 另有 `uplinkChunkBytes`（注释「20ms of 16 kHz mono s16le (640 bytes)」），数值一致但**改一处不会让另一处红**。
-- **BE-S2-4 ❌ 仍开着，逐字未变** —— `httpserver/server.go:162-179` 的 `discovery` 仍是那六个键（`tts` / `hits` / `history` / `privacy` / `materials` / `topic_cards`），仍然没有 `drill` / `corpus` / `content`。
-- **BE-S2-5 ❌ 仍开着** —— `server.go:181-185` 的 `serveMetrics` 仍是 `tts.PrometheusMetrics()+corpus.PrometheusMetrics()+drill.PrometheusMetrics()+account.PrivacyPrometheusMetrics()+review.PrometheusMetrics()+materials.PrometheusMetrics()+topic.PrometheusMetrics()`；`prometheus` / `registry` 在 `internal/httpserver/` 与 `pkg/` 零命中。
-- **BE-S2-6 ✅ 已完成**（backend `8325795`）—— 5 处补排序，判据先红后绿，见下表。
+- **BE-S2-4 ✅ 已完成**（backend `a003b16`）—— `discovery` 不再手写：`publicEndpoints` 读 `engine.Routes()`，按 `apiPrefix` 后的首段分组、组内排序。**并且顺带关掉一个披露面**：旧表把 `/internal/v1/tts/synthesize` 与 `/internal/v1/voicegateway/hits` 写在了一个**不需要任何令牌**的端点上，现在内部面按前缀整体扣掉。
+  ⚠️ **这一步我最初判定「零消费方」是错的**：我用 `grep -v _test.go` 检索，正好把消费方筛掉了 —— 它是一条测试（`internal/session/http_test.go` 的 `TestOpenAPIDiscoveryEndpoints`，断言 `discovery["openapi"] == "/openapi.yaml"`），已同步到新形状。**与 BE-S1-7 同型：「搜不到标识符」≠「没有这个行为」。**
+- **BE-S2-5 ✅ 已完成**（backend `a003b16`）—— `/metrics` 走 `metricsRegistry`：一处登记；`serveMetrics` 只调 `renderMetrics()`。三条守卫：源码树扫描比对注册表（带反空洞下限）、同一族指标不得被两个包渲染、登记了必须真被送出。
+- **BE-S2-6 ✅ 已完成**（backend `8325795`）—— 5 处补排序，见下表。
+  ⚠️ **但上一轮的判据是错的，已在 `82bd06e` 修正**：它把「行序稳定」和「**数值**稳定」混在一起（渲染 17 次要求逐字节相同），而同包其它测试真的在跑 refine 管线 ⇒ 整包跑时红、单跑时绿，**上一轮它绿是运气**。现在只断言标签集合**按升序出现**，数值丢弃；5 个包共用 `internal/metricstest.LabelSetsIn`。
+- **BE-S2-9 ❌ 仍开着**（新发现）—— `internal/content/tts/router_test.go:53` 断言 `routeHits` 的绝对值，而它是包级全局：`-count=3` 时输出 `expected 1 hit for voice-a, got 3`。本次未修（与本次改动正交）。
 - **BE-S2-7 ❌ 仍开着** —— `ls test/` 只有 `.gitkeep`（1 字节）。
 - **BE-S2-8 ❌ 仍开着，且比旧文更可量化** —— 把两侧对了一遍：`configs/*.env.example` 声明 **27** 个变量，代码里 **读** 了 **42** 个 ⇒ **21 个只被读、没被声明**（`APP_BASE_URL` / `APP_RUN_REVIEW_WORKER` / `ARK_PRICING_FILE` / `ARK_THINKING` / `DRILL_DAILY_NEW_BLOCK_LIMIT` / `DRILL_PROMOTE_STREAK` / `DRILL_ROUND_SIZE` / `MINI_SESSION_TURN_LIMIT` / `MYSQL_DSN` / `TOPIC_MIN_BLOCKS` / `VOICE_CLIENT_ASR_REQUIRED` / `VOICE_DEV_ECHO_FIXTURE` / `VOICE_DEV_ECHO_TEXT` / `VOLC_DUPLEX_MODEL` / `VOLC_DUPLEX_VOICE` / `VOLC_POC_*`(4) / `VOLC_SPEECH_RESOURCE_TTS` / `VOLC_T9_TRIALS` / `WORKER_ID`）。
   ⚠️ **这不是纯文档问题**：`dev-up.sh:123-124` 在没有真实 env 文件时**会把 `configs/app-server.env.example` 当环境文件加载** ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。**本次已顺手补上 `MINI_SESSION_TURN_LIMIT`**（backend `4cd446a`，T4 的收尾），其余 20 个未动。
   （现成形状：`TestVolcEnvExampleCarriesTheGatewayWiring` 断言的就是**模板**而非文件 —— 注释写着 "asserts the *template the file is rebuilt from*, which is the half that was wrong"。所以判据形状已经有了，只是没铺开。）
 
 
-**BE-S2-4 值得单独说**：`discovery` 是一个**手写的路由表副本**，而路由表本身是 nil-gated 动态挂载的（`httpserver/server.go:93-129`）。所以「服务有哪些端点」这个问题，**在代码里没有一个地方能一次回答清楚**。它和 iOS 的 `TransportEventRouter` 形成对照：那边是一张**静态可断言**的表（`80_/README` G5）。
+**BE-S2-4 值得单独说（已解）**：`discovery` 原来是一个**手写的路由表副本**，而路由表本身是 nil-gated 动态挂载的（`httpserver/server.go:93-129`）—— 所以「服务有哪些端点」这个问题，**在代码里没有一个地方能一次回答清楚**。现在它读路由表本身（`engine.Routes()`，gin 的官方入口），手抄的可能从根上被去掉。它和 iOS 的 `TransportEventRouter` 那个对照（那边是一张**静态可断言**的表）现在不再成立了：这边变成**运行时派生**的表。
+两条判据：`TestDiscoveryListsEveryMountedRoute`（挂一条**没有任何模块注册**的探针路由，手写清单必然漏它）、`TestDiscoveryWithholdsTheInternalSurface`。
 
 **BE-S2-6 的实测明细（2026-09-26 复核）**：
 
@@ -178,11 +195,20 @@
 
 **修复（backend `8325795`）**：5 处照 `corpus` 的既有形状 —— 先收 key、`sort.Strings`、再渲染。
 判据是旧文自己写的那句（「同一状态渲染两次必须逐字节相同」）：5 个包各一条
-`TestMetricsRenderingIsReproducible`，渲染 17 次要求逐字节相同，**改之前五条全红**。
+`TestMetricsRenderingIsReproducible`，改之前五条全红。
+
+⚠️ **那句判据本身写错了，`82bd06e` 已修正** —— 它把两件事混在一起：
+
+1. **行序**要稳定（这才是要的，也是两条 scrape 能 diff 的前提）；
+2. **数值**要稳定（**不是要的，而且不成立**）—— 同包其它测试真的在跑 refine 管线，
+   `material_refine_timeout_total 2`、`processing->failed 13` 这类数字在两次渲染之间就被推高了。
+
+后果很具体：**整包跑（`go test ./...`）红、`-run` 单跑绿 ⇒ 上一轮那条绿是运气。**
+现在只断言标签集合**按升序出现**（数值丢弃），仍保留 8 次渲染（一次 map 迭代碰巧有序的概率
+是 1/6，8 次是 (1/6)^8），5 个包共用 `internal/metricstest.LabelSetsIn`。
 
 ⚠️ **留下一条更值得记的教训**：这条缺陷能被留下来，是因为**既有判据只做 `strings.Contains`** ——
-行序从来没有东西守。所以新判据每条前面加了一道**反空洞**断言（渲染出的 label 行数必须不少于塞进去的键数），
-并用变异确认它真会咬（`if len(transitions) == 0` → `if true` 时红在「want at least 3」）。
+行序从来没有东西守。所以新判据每条前面加了一道**反空洞**断言（渲染出的 label 行数必须不少于塞进去的键数）。
 **否则哪天标签块不再渲染，这条测试会比较两个占位结果而静默通过。**
 
 **确定性：【实测】。**
@@ -206,16 +232,19 @@
 
 ---
 
-### 5. 如果只做三件事（2026-09-26 二次重排）
+### 5. 如果只做三件事（2026-09-26 三次重排）
 
-⚠️ **旧版的三条已经全部做完**（BE-S1-1 ✅ `25a015e`；BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`），
-**本版重排的第 1 顺位也做完了**（BE-S2-6 ✅ `8325795`）。以下是同一判据下的第三顺位，且只从**复核后确认 ❌** 的条目里挑。
+⚠️ **前两版的三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
+二次重排的第 1 顺位 BE-S2-4 + BE-S2-5 ✅ `a003b16`。以下是同一判据下的当前顺位，且只从**复核后确认 ❌** 的条目里挑。
 
-1. **BE-S2-4 + BE-S2-5（`discovery` 与 `/metrics` 各有一份手写副本）** —— 两条同源：「服务有哪些端点 / 哪些指标」在代码里**没有一个地方能一次答清**。§7 拿它跟 iOS 的 `TransportEventRouter` 对照（那边是一张**静态可断言**的表），backend 这边两处都是手抄。`BE-S2-4` 尤其具体：六个键里少了三块（`drill` / `corpus` / `content`）。
-2. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下三条 S1 里**唯一既不需要决定、也不需要动契约**的一条（另两条：`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试卫生）。它是 S1 是因为「不做会在下一次同类缺陷上再花一遍时间」：每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
-3. **BE-S2-8（21 个环境变量只被读、没被声明）** —— 三条 S2 里唯一**后果落在开发环境里**的一条：`dev-up.sh:123-124` 在没有真实 env 文件时会把 `configs/*.env.example` 当环境文件加载 ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。而且**判据形状已经有了**（`TestVolcEnvExampleCarriesTheGatewayWiring` 断言的就是模板），只是没铺开。
+1. **BE-S2-8（21 个环境变量只被读、没被声明）** —— 剩下唯一一条**后果落在开发环境里**、且**判据今天就会红**的：`dev-up.sh:123-124` 在没有真实 env 文件时会把 `configs/*.env.example` 当环境文件加载 ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。判据形状已经有了（`TestVolcEnvExampleCarriesTheGatewayWiring` 断言模板），只是没铺开；21 个的名单也已经在 §3 逐条列出。
+2. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下三条 S1 里**唯一既不需要决定、也不需要动契约**的一条（另两条：`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试夹具收敛）。每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
+3. **BE-S2-2 + BE-S2-3（两处注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了三次。
 
-**为什么这次 S2 排到了 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的三条**（一次重构 / 一次契约变更 / 一次测试夹具收敛），而上面第 1、3 条成本低、各自自带一条能红的判据。分级答的是「不做会怎样」，不是「先做哪一个」。
+**为什么这次把 `BE-S2-9` 排除在三位之外**：它的后果（`-count>1` 会红）**今天没有任何东西会走到**，
+因为门禁固定 `-count=1`。它是一条真缺陷，但排在「修复后无人受益」的位置上 —— 先修会误导读者的那两条。
+
+**为什么 S2 仍然排在 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的**。分级答的是「不做会怎样」，不是「先做哪一个」。
 
 **BE-S0-1 已从这张表里出局**（2026-09-26 复核）：四仓代码都落地了，剩下真机跑与冻结产物摘要重核，见 §8。它当初被排除在「三件事」之外的理由是**它不能单独做**（需要协议版本、两侧同时改、先确认没有老客户端）—— 而这个理由后来被**一次专门排期**解决了。**它不是被塞进「三件事」里做掉的，是单独做掉的**，这个区分值得留着：S0 的条目不该为了「凑进三件事」而开工。
 
