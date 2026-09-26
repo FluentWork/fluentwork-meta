@@ -69,36 +69,38 @@
 
 ## 2. 执行票
 
-### T1 — 素材上下文注入对话（B2）｜最高价值
+### T1 — 素材上下文注入对话（B2）｜最高价值 ✅
 
 **目标**：会话打开时，把素材内容送进模型的 system prompt。
 
-**现状（证据）**
-- 网关只拼**编号**：`internal/voicegateway/provider_volc_duplex.go:1128-1140` —— `parts = append(parts, "素材编号："+material+"。")`【读码】
+**现状（证据，改动前）**
+- 网关只拼**编号**：`internal/voicegateway/provider_volc_duplex.go:1134` —— `parts = append(parts, "素材编号："+material+"。")`【读码】
 - 素材正文在全仓的**唯一**消费者是提炼 prompt：`internal/materials/refiner.go:62`【读码】
 - **落点已经存在，不需要新端点、不需要改协议**：`POST /internal/v1/sessions/activate`（`internal/session/internal_http.go:30`），网关在 `openSession` 里必调一次（`internal/voicegateway/handler_control.go:288`）【读码】
-- app-server **自己知道** `material_id`：`internal/session/types.go:49`（`Session.MaterialID`）【读码】
-- `Start` 有**两个**调用点，都从 `rt` 取服务端解析出来的值：`handler_control.go:277`（首开）与 `handler.go:621`（透明重开），两边都传 `rt.continuation`【读码】
+- app-server **自己知道** `material_id`：`internal/session/types.go:57`（`Session.MaterialID`）【读码】
 
-**改动形状**（照 `ContinuationTurn` 的先例 —— `internal/voicegateway/provider.go:39-50` 已经写清了为什么服务端解析的值要 "rides beside `SessionStart`"）
+**已落地（backend `89cd2df`）**
+1. `session`：`ActivateResponse` 加 `material_context`；新增 `MaterialSource` seam + `SetMaterialSource`；`Activate` 从**会话记录**取 `material_id` → 取正文 → `capRunes` 到 2000 字；**查不到只记 WARN、不失败**（照 `ContinuationContext` 的先例）。
+2. `materials.SessionMaterialSource` 适配器（照 `materials.PrivacyWiper` 的先例），`cmd/app-server` 在 materialSvc 建好后接线。
+3. `voicegateway`：`SessionLifecycle.Activate` 由 `error` 改成返回 `ActivateResult{MaterialContext}`（**网关侧自有类型** —— 这个包不依赖 app-server 的包）；`openSession` 把结果存进 `rt.session`（**与 `rt.continuation` 同址、同生命周期**）。
+4. `VoiceProviderSession.Start` 的第二个参数由 `[]ContinuationTurn` **收敛成 `SessionContext{Continuation, Material}`**（15 个实现同步）。
+5. `instructionsForSessionStart` 用素材正文替换「素材编号」—— **替换，不是并存**。
 
-1. `internal/session`：`ActivateResponse` 加 `MaterialContext string`；`Service` 加 `MaterialSource` seam（照 `SetReviewGenerator` / `SetCorpusProvisioner` / `SetEvalProcessor`，`service.go:80-90`）；`Activate` 读 `session.MaterialID` → 取素材 → 拼上下文。
-2. `cmd/app-server/main.go`：把素材读接口注入 seam。
-3. `internal/voicegateway`：`SessionLifecycle.Activate` 由 `error` 改成返回 response（`session_client.go:20`，**注意 `cmd/integration-voice-gateway/main.go:269` 的假实现要一起改**）；`HTTPSessionClient.Activate` 同步（`session_client.go:160`）；`openSession` 把结果存进 `rt`（**与 `rt.continuation` 同址、同生命周期**）。
-4. `VoiceProviderSession.Start` 的第二个参数由 `continuation []ContinuationTurn` **收敛成 `SessionContext`**（含 `Continuation` + `Material`）—— 让类型自己说明「这是服务端解析的、客户端帧带不了的东西」。
-5. `instructionsForSessionStart` 用素材上下文替换「素材编号」。
+**完成判据与证据**
+- 三个新文件 + 一处扩写，共 10 条判据：`internal/session/activate_material_test.go`（5）、`internal/voicegateway/handler_material_context_test.go`（2，走真 WSS 握手）、`handler_upstream_recovery_test.go` 加 1 条重开路径。
+- **变异 7 次，各自被期望的那条咬住**：不填 context / 用空 userID 查 / 去掉长度上限 / `openSession` 丢掉结果 / 重开不带上下文 / 退回用帧里的 `material_id` / 素材块不发。
+- 反向：没有素材 ⇒ 上下文为空、provider 收到空串、instructions 不出现「素材编号」。
 
-**完成判据（以及它凭什么会红）**
-- **主判据**：一条测试，**直接构造一个带 `material_id` 的 session**（绕过客户端），断言 provider 收到的 instructions 含素材文本。
-  ⚠️ **不能只测 `instructionsForSessionStart` 这个纯函数 —— 它今天就是绿的**（P1-25 修完形状已经对了）。要测的是**值从 app-server 流到 provider** 这一整条。
-- **反向**：没有 `material_id` 时 instructions 不含素材文本，且**不再出现「素材编号」**（旧行为要被替换掉，不是并存）。
-- **重开路径**：断言透明重开后 instructions 仍含素材文本 —— 这是 `rt.continuation` 那一族的坑（`handler.go:621`）。
+**⚠️ 未关闭 —— 端到端仍然是空的**
+服务端现在能从**会话记录**取素材正文，但**今天没有任何东西会建出一个带 `material_id` 的会话**：iOS 两处 `createSession` 都硬编码 `materialID: nil`（`DefaultSpeechSessionClient.swift:91-95` / `:107-111`），而创建素材的入口在客户端根本不存在。
+⇒ **T1 是必要不充分**：服务端这半边做完了，端到端要等客户端把 `material_id` 传上来（**属 D2 那条线**，另立票 T1-c）。
 
 **明确不做**
-- **不改 `session.start` 帧**：那是客户端可写的字段，`provider.go:44-46` 已经写过这条理由。
-- 不引入新端点（`ContinuationContext` 那种独立端点在这里没必要，因为 app-server 不需要客户端提供的第二个 id）。
+- **不改 `session.start` 帧**：那是客户端可写的字段（`provider.go:44-46`）。
+- 不引入新端点（app-server 不需要客户端提供的第二个 id）。
+- `SessionStart.MaterialID` 这个线上字段现在网关侧**无人读** —— 保留（不改帧），但它已不是素材进 prompt 的路径。
 
-**blocked-by**：D1
+**blocked-by**：D1（按默认 a 落地）
 
 ---
 
@@ -215,20 +217,24 @@ PRD §9.3 的三条红线（首响 P90 ≤1.5s / 评价 ≤15s / 冷启动 ≤2.
 ## 3. 依赖图与开工顺序
 
 ```
-D1 ──→ T1 ──┐
-             ├──→ （T4 与 T1 同落点，建议同一批）
-D4 ──→ T4 ──┘        └──→ infra（契约）先行
+D1 ──→ T1 ✅ ─┐
+              ├──→ （T4 与 T1 同落点，建议同一批）
+D4 ──→ T4 ───┘        └──→ infra（契约）先行
 D3 ──→ T2
-        T3（无依赖，可立刻开工）
+D2 ──→ T1-c（客户端把 material_id 传上来 —— 端到端的前提）
+        T3 ✅（已完成）
         T5-a ✅（已完成）
         T5-c ←── UI
         T5-b ←── D1
         T6 / T7（并行，不阻塞）
 ```
 
-**建议顺序**：**T3 → T5-a → T2 → T1 → T4 → T5-b**
+**建议顺序**：**T3 ✅ → T5-a ✅ → T2 → T1 ✅ → T4 → T5-b**
+下一步是 **T1-c / T4**：T1-c 是端到端的前提（属 D2 那条线），T4 与 T1 共用落点（`Activate` 的响应 + `SessionContext`）。
 
-理由：T3 与 T5-a 都是**独立、可立刻开工、且做完就减少一处说谎的地方**（T3 把哑判据变真；T5-a 让一条测试从红变绿）；T2 次便宜；T1 是解锁客户端的先决条件，但它改的是热路径（`Start` 接口），**要留出足够的时间做红验证**；T4 与 T1 共用落点，紧挨着做。
+理由：T3 与 T5-a 都是**独立、可立刻开工、且做完就减少一处说谎的地方**（T3 把哑判据变真；T5-a 让一条测试从红变绿）；T2 次便宜但**当前两头都不该动**（见下）；T1 是解锁客户端的先决条件，改的是热路径（`Start` 接口），已完成并做了 7 次变异验证。
+
+**T2 现在为什么卡住**：它的两个选项分别撞上两条默认 —— T2-a（补路由）违反 D3 默认（G1 本轮不做），T2-b（摘链）是**客户端数据层**改动、违反 D2 默认（本轮只排纯服务端票）。要动它得先拍 D3 或 D2 中的一条。
 
 ---
 

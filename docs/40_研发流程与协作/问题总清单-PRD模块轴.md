@@ -42,7 +42,7 @@
 
 ### 2.1 「素材驱动」这条主线，两端各缺一段，缺的都在输入端
 
-PRD §三 设计原则 2、§14.3 护城河维度三、B2「Prompt 注入素材提炼 + 场景目标 + 程序员话术规范；≥60% AI 话轮引用素材内容」全都压在这一条上。**它现在是空的**，而且不是「接线松了」：
+PRD §三 设计原则 2、§14.3 护城河维度三、B2「Prompt 注入素材提炼 + 场景目标 + 程序员话术规范；≥60% AI 话轮引用素材内容」全都压在这一条上。**它现在是空的**（中间段已补 —— `89cd2df`，见 事实③；**两端仍断**），而且不是「接线松了」：
 
 **事实① —— 客户端从来不送素材**【读码】
 `Shared/FluentWorkCore/Services/DefaultSpeechSessionClient.swift:91-95` 与 `:107-111`，**两个** `createSession` 调用点都硬编码 `materialID: nil`：
@@ -58,18 +58,12 @@ created = try await api.createSession(
 **事实② —— 客户端没有创建素材的入口**【读码】
 `Shared/FluentWorkNetworking/API/FluentWorkAPI.swift:5-49` 共 15 个 case，**没有 `/materials`**。也没有创建练习弹层（PRD §六 要求它是「从首页到开始说话不超过两次点击」的默认入口）—— 全仓搜 `创建练习` / `CreatePractice` / `2000`（字数上限）/ `迷你` 均无 UI 命中。
 
-**事实③ —— 就算 `material_id` 有值，送到模型的也只是「编号」不是「内容」**【读码】
-`internal/voicegateway/provider_volc_duplex.go:1128-1140`：
+**事实③ —— 送到模型的只是「编号」不是「内容」** ✅ **已修（backend `89cd2df`）**
+改动前：`internal/voicegateway/provider_volc_duplex.go:1134` 拼的是 `"素材编号："+start.MaterialID`（UUID），而素材正文 `Material.Content` 在全仓的消费者**只有提炼 prompt 一个**（`internal/materials/refiner.go:62`：`RefinePrompt(m.Kind, m.Content)`）【读码】。
+改动后：素材正文由 `session.Activate` 从**会话记录**解析（`material_id` 只有 app-server 知道，客户端的 `session.start` 帧带不了），经 `SessionContext.Material` 交给 provider，`instructionsForSessionStart` 用它替换掉「素材编号」——**替换，不是并存**。含透明重开路径，7 次变异验证。
 
-```go
-if material := strings.TrimSpace(start.MaterialID); material != "" {
-    parts = append(parts, "素材编号："+material+"。")   // ← 拼的是 UUID
-}
-```
-
-而素材正文 `Material.Content` 在全仓的消费者**只有提炼 prompt 一个**（`internal/materials/refiner.go:62`：`RefinePrompt(m.Kind, m.Content)`）【读码】。**没有任何代码把素材的提炼结果（主题/术语/讨论点）放进对话的 system prompt。**
-
-**⇒ B2 在生产上不可能达标。** 这一条是设计原则 2 与护城河维度三的**唯一实现路径**，而它两头都断。
+**⇒ 中间段已通，B2 仍未达标 —— 因为输入端一个字没动。**
+事实①②（客户端没有创建素材的入口、两处 `createSession` 硬编码 `materialID: nil`）**都还在**：没有任何东西会建出一个带 `material_id` 的会话，所以这条路径在生产上**没有调用方**。它是设计原则 2 与护城河维度三的**唯一实现路径** —— 中间段补上了，两端仍断。
 
 **与既有记录的关系**：`问题总清单-产品与缺陷.md` 的 **P1-25 已修**（`session.start` 两端字段名从「零重叠」对齐到网关的名字）。那修的是**中段一个字段名**，修完之后链路的形状是对的 —— 但**没有东西流过去**。这是本仓反复撞到的形状的一个新子型：**判据被修好了，被它驱动的那件事从来没有生产者。**
 
@@ -138,7 +132,7 @@ flashRoot: {
 | ID | PRD 要求 | 现状 | 缺的是哪一段 | 确定性 |
 |---|---|---|---|---|
 | **B1** | 语音对话；首响 ≤1.5s（P90）；**8-12 回合 + 迷你会话（3-5 回合）** | 🟡 | 语音链路已通。**迷你会话两端都不存在** —— 后端 `CreateRequest` 只有 `material_id` / `scene_type`（`internal/session/types.go:252-255`），无回合数；客户端搜 `迷你` / `mini` / `3-5` / `8-12` 零命中。首响 P90 **未量化验证**（真机没跑过） | 【读码】 |
-| **B2** | Prompt 注入素材提炼 + 场景目标；**≥60% AI 话轮引用素材内容** | ❌ | 见 **§2.1**。输入端（无素材）与中间段（只注入编号不注入内容）**两处都缺** ⇒ 生产上不可能达标 | 【读码】 |
+| **B2** | Prompt 注入素材提炼 + 场景目标；**≥60% AI 话轮引用素材内容** | 🟡 | 见 **§2.1**。**中间段已修**（backend `89cd2df`：素材正文现在从**会话记录**解析并进 instructions，替换掉「只拼编号」，含透明重开路径，7 次变异验证）。**输入端仍缺** —— 没有任何东西会建出一个带 `material_id` 的会话（iOS 两处 `createSession` 硬编码 `materialID: nil`，`DefaultSpeechSessionClient.swift:91-95` / `:107-111`）⇒ **端到端仍然不可能达标**，缺的是客户端那一半（T1-c，属 D2 那条线） | 【读码】 |
 | **B3** | 实时转录**浮层**；延迟 ≤1 秒 | 🟡 | 有实时转录，但是**内联视图不是浮层**（`Shared/FluentWorkUI/SpeakingRoom/SpeakingRoomView.swift:650-664`）。延迟无量化 | 【读码】 |
 | **B4** | AI 气泡支持**重播音频**、展开文本 | ❌ | 气泡上只有命中徽章按钮（`SpeakingRoomView.swift:600-643`）。全仓搜 `重播` / `replay` 在 UI 层零命中 | 【读码】 |
 | **B5** | 完整转录（区分说话人）+ 异步分析；3 秒内可查看 | ✅ | 后端 review worker + `GET /sessions/:id/review`；iOS `ReviewRootView` + `SessionDetailView` | 【读码】 |
