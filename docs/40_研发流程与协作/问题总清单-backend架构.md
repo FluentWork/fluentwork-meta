@@ -84,6 +84,7 @@
 | BE-S0-4 | **`topic_cards` 加唯一键** —— 需先确认历史数据无重复 | 你（数据确认） | **2026-09-26 复核仍成立**：含 `topic_cards` 的迁移只有 `0015` / `0019` / `0025`，三份里**没有任何 `UNIQUE`**；`0015` 只有普通索引 `KEY idx_topic_cards_user_date`；`topic/scheduler.go:24` 的 `lastRun` 在内存里 | 【实测】 |
 | BE-S0-5 | **`voicegateway` 的拆分目标形状**（按「连接/provider/救援」还是「协议/状态/IO」） | 你 / 架构 | **2026-09-26 复核**：`internal/voicegateway` **80** 个 `.go`（25 个非测试），仍是扁平包（旧文写 71） | 【实测】 |
 | BE-S0-6 | **网关不能恢复会话** —— 要「携 `session_id` 重连」需要三样，一样都不存在 | 你 / 产品（要不要这个能力） | iOS 侧已标记 + 钉住：`P1-15` ✅ / `P1-23` ✅ | 【读码】 |
+| BE-S0-7 | **`DuplexSession.Close()` 与静音泵 goroutine 抢 `s.conn`** —— 数据竞争，且最坏后果不是竞态而是 panic | 你 / 架构（修法三选一，见下） | **2026-09-26 新发现**（复核 `BE-S1-4` 时顺手跑 `-race` 撞出）：`voiceduplex/volc_duplex.go:828` 写 `s.conn = nil`、`:857` 读它，而 `collectTurn` 在 `:738` 起的静音泵每 20ms 调一次 `send` | 【实测】 |
 
 **`BE-S0-1` 与 iOS 的 `iOS-S0-1` 是同一条。** 它在本仓的形态是：`AITTSAudio.Encode` 把 `[4B seq]` 和 payload 直接拼起来，**没有位置放 turn 号**；而 `ai.tts.start` / `ai.tts.end` 的 `turn_id` JSON tag **故意不带 `omitempty`**（声明为必填）。
 
@@ -107,6 +108,32 @@
 
 ---
 
+**`BE-S0-7` 是本次唯一一条由「验证」而不是由「读码」发现的条目**，单列一段。
+
+`internal/voiceduplex/volc_duplex.go` 的 `DuplexSession`：
+
+| 位置 | 行为 |
+|---|---|
+| `:819` `Close()` | 发 `session.close`，关 WebSocket，然后 **`:828` `s.conn = nil`** |
+| `:852` `send()` | **`:857` `s.conn.Write(...)`** —— 直接读该字段，**无 nil 保护** |
+| `:738` `collectTurn()` | 每个 turn 起一个 goroutine 跑 `sendSilence`，`:800` 起每 **20ms** 调一次 `send` |
+
+`sendSilence` 上挂的 `defer stopSilence()`（`:737`）只能保证 goroutine **下次回到 `select`** 时退出 —— 拦不住已经走进 `s.send` 的那一次。于是：
+
+- **必然发生的是数据竞争**：`Close` 写 `s.conn`、静音泵读 `s.conn`，`go test -race` 间歇性命中。
+- **可能发生的是 panic**：若交错落在 `s.conn = nil` 之后，`s.conn.Write(...)` 是对 **nil 接收者**的调用。`coder/websocket` 的 `Conn.Write` 第一条语句就是 `c.write(...)` → `c.writer(...)` → `c.msgWriter.reset(...)`，**没有任何 nil 检查**。静音泵是个没有 `recover` 的 goroutine ⇒ 崩的是整个 `voice-gateway` 进程。
+
+**确定性与范围**：已在 HEAD `182ec75` 的**干净 worktree** 上复现（不只是本次改动的树），且触发者是**另一个**测试（`provider_volc_duplex_mute_test.go:92` 而非 `provider_session_instruction_test.go:158`）—— 所以这不是某个新测试写坏了，是 `Close()` 与「turn 级 goroutine」之间的生命周期缺口，任何在 turn 进行中关会话的路径都能走到（`session.end`、连接断开、provider close）。
+
+**为什么它至今没人看见**：落地门禁 `./scripts/dev-check.sh` 的第 4 步是 `go test`，**不带 `-race`**。这条缺陷对整套七步门禁完全不可见 —— 它需要有人主动去跑一次 `-race`。**⇒ 门禁本身缺一条**（另见 §5 的第 4 位）。
+
+**三种修法（决定在这里，不在实现里）**：
+1. `Close()` 先取消本会话的静音泵并**等待它退出**（要 `collectTurn` 把 `stopSilence` 交出来，或让泵自己注册到 session 上）；
+2. 给 `conn` 加互斥/`atomic.Pointer`，读写都走同一把锁；
+3. `send()` 对 nil 安全（返回错误 → `sendSilence` 已经在丢弃错误）—— 消掉 panic，但**数据竞争本身仍在**，所以这条只能作为另外两条的补充，不能单独用。
+
+**本轮未修的理由**：`BE-S1-4` 是分派重构，改动落在 `internal/voicegateway`；这条在 `internal/voiceduplex`，且修法需要上面这个选择。**不把两条不同包、不同性质的改动塞进一个提交**，所以单独立票、单独立一个 turn 做。
+
 ### 2. S1 — 结构上该补的「防线」
 
 | # | 条目 | 动作 | 风险 | 价值 | 证据 | 2026-09-26 复核 |
@@ -114,7 +141,7 @@
 | BE-S1-1 | **`materials` 的 refine 没有租约**，`processing` 是没有出口的状态 | 照 `session_jobs` 抄：加 `attempts`/`locked_at` + 清扫，或挪进 `cmd/worker` | 中 | **高** | `03` §2.2 | ✅ **已完成** `25a015e` |
 | BE-S1-2 | **`httpjson.Error` 零测试**，而它是每个 API 错误的唯一出口，有 4 个分支 | 补 4 个分支的测试 | 低 | **高** | `04` §3.2 | ✅ **已完成** `01a5e55` |
 | BE-S1-3 | **手写二进制解码器没有 fuzz**（全仓 0 个 fuzz） | 给 `DecodeAITTSAudio` 写 fuzz | 低 | **高** | `04` §3.1 | ✅ **已完成** `cb99ba3` |
-| BE-S1-4 | **控制帧分派是线性扫描，同一帧被解码最多 8 次** | 改成按类型查表，把已解出的 `frameType` 传下去 | **低**（只搬分派） | 中 | `02` §3.1 | ❌ **仍开着**（且是 9 次不是 8） |
+| BE-S1-4 | **控制帧分派是线性扫描，同一帧被解码最多 8 次** | 改成按类型查表，把已解出的 `frameType` 传下去 | **低**（只搬分派） | 中 | `02` §3.1 | ✅ **已完成**（backend `67c37e0`；实测是 **9** 次不是 8） |
 | BE-S1-5 | **`ai.audio.chunk` 常量无生产者、无注释** | 加一句「无生产者，保留为协议位」；**v1 已退役但这张死面仍在 v2**（见 §8） | 无 | 低 | `02` §3.2 | ❌ **仍开着** |
 | BE-S1-6 | **音频热路径的逐帧 `Debug` 日志**，成本无法量化（因为 0 个 benchmark） | 先加 benchmark，再用数据决定 | 低 | 中 | `02` §3.4、`04` §3.1 | ✅ **已完成** `46bd534` |
 | BE-S1-7 | **`providerErrorStrategies` 的 key 与 handler 的对应关系只靠读** | 补一条测试：表里每个 key 都必须是真会转发给 provider 的帧类型 | 低 | 中 | `02` §2.1 | ✅ **已完成** `8c6792c`（发现比旧文更严重） |
@@ -126,7 +153,11 @@
 - **BE-S1-1 ✅** —— 落地物齐全：`materials/model.go` 的 `DefaultRefineLease` / `MaxRefineAttempts = 2` / `ReclaimInterval` / `ErrorLeaseExpired`；`Store.ReclaimExpired`（`memory_store.go:108` + `mysql_store.go:109` 两个实现）；`Service.ReclaimExpired` + `Service.SweepIfDue`（`refiner.go:111` / `:135`，带 `lastSweep` 节流）。判据是 `internal/materials/refine_lease_test.go` **7 条**（活租约不动 / 过期重排 / 次数用尽转 failed / 跳过已删素材 / service 级重跑 / `SweepIfDue` 一个间隔只扫一次 / 重排记 transition）。
 - **BE-S1-2 ✅** —— `internal/httpjson/httpjson_test.go` 存在（与 `httpjson.go` 同级）。
 - **BE-S1-3 ✅** —— `internal/voiceproto/frames_fuzz_test.go:11` 的 `FuzzDecodeAITTSAudio`。**全仓已不止一个 fuzz**（旧文「全仓 0 个」作废）。
-- **BE-S1-4 ❌ 仍开着，且数字变了** —— `handler_control.go:124` 仍是 `handlers := []func(context.Context, *websocket.Conn, ConsumedTicket, []byte, *sessionRuntime) (controlOutcome, error)` 的顺序扫描；`voiceproto.DecodeType(data)` 在该文件出现 **9 次**、`controlNotMine` **12 次**（旧文说「最多 8 次」）。每个 handler 各自从头解一遍类型。
+- **BE-S1-4 ✅ 已完成**（backend `67c37e0`）—— 旧文说「同一帧最多解码 **8** 次」，实测是 **9**：`handler_control.go` 里 9 处 `DecodeType`（1 处分派 + 8 个 handler 各一遍），另 1 处在 `handler.go:255` 的 `handshake`（auth 帧，发生在分派存在之前，不受影响）。旧文那句「`handler_control.go:124` 的 9 个 handler」也不对 —— 是 **8** 个 handler、9 个**类型**（`controlUserSpeech` 认领一句发言的两端）。
+  **改法**：`controlDispatch map[string]controlHandler`（一帧一行，查表即分派）+ `controlFrame{typeName, data}`（已解出的类型随帧交下去）；`controlOutcome` / `controlHandled` / `controlNotMine` **整个删掉**（12 处引用 → 0，查表已决定归属，handler 没有「不是我的」可答）。顺带拆掉一层**不可达且行为不一致**的死分支：handler 内部那句 `if err != nil { return controlNotMine, nil }` 外层已经解过一次，永远走不到 —— 而它若走到会掉进 `unknownFrame`（静默吞掉），与外层解码失败的 `invalid_frame` 是两个答案。
+  **判据三条**（`internal/voicegateway/handler_control_dispatch_test.go`）：① 包内非测试文件的 `DecodeType` 调用点只允许 `handshake` 与 `HandleControl` 两处（**改之前跑是红的**，点名 8 个处理器与文件行号）；② 9 个 C→S 类型逐个写死断言，**不从表反推**（反推会让判据同意表的任何说法，包括删掉一行之后）；③ AST 扫 `func (h *Handler) control*` 与表双向比对 —— 编译器只管「行指向不存在的方法」，管不了「写了 handler 忘了加行」，而这次改动恰好把失败模式从「我得改 8 个文件」（响）挪到了后者（哑）。
+  **变异 6 条全部咬住**：表漏一行（判据 ② 报「客户端发得出、没人认领」+ 判据 ③ 报「处理器没人路由」，两侧各一口）/ 表多一行 / 把解码加回 handler / **包级变量初始化里解码**（上一轮 `BE-S2-8` 真漏过的盲点，这次提前堵上）/ 别名导入 `vp "…/voiceproto"` / **故意弄坏提取器**（报的是「扫描坏了，不是仓库干净了」，不是零命中）。
+  ⚠️ 本条的复核**顺带撞出了 `BE-S0-7`** —— 见 §1。
 - **BE-S1-5 ❌ 仍开着** —— `TypeAIAudioChunk` 全仓只有 `voiceproto/frames.go:22` 的声明与 `frames_test.go:764` 的引用，**没有生产者**。§8 已论证 v1 退役没有清掉它。
 - **BE-S1-6 ✅** —— `internal/voicegateway/handler_audio_bench_test.go` **3 条** benchmark（`BenchmarkHandleAudioFrame` / `…DebugEmitted` / `BenchmarkAudioFrameDebugCall`）⇒「0 个 benchmark」作废，热路径 Debug 的成本**第一次可以量化**。
 - **BE-S1-7 ✅ 已完成（`8c6792c`），而且真实情况比旧文写的严重** —— 旧文写「对应关系只靠读」（言下之意是读出来的关系是对的）。实际读下去发现**表里 `user.speech.end` 那一行从来没有被读过**：`startCollectTurn`（`handler.go:686`）自己直接调 `HandleClientControl`，失败时**手写死** `provider_control_failed` ⇒ 改那一行行为不变，它是**装饰**。修法因此不是「补一条测试」，而是**把两处收成一个实现点** `providerErrorCode(frameType)`，两个调用点都走它，并补 `handler_control_policy_test.go`（两条测试 + 一个记录「provider 收到了哪些帧」的 spy）。
@@ -138,7 +169,7 @@
 
 **这两条「最该先做」的都已经做完了**（BE-S1-1 与 BE-S1-3，见上表 ✅）。旧文在这里写「BE-S1-1 是这张表里最该先做的一条」「BE-S1-3 是性价比最高的一条」，两条今天都只剩历史价值。值得记一笔的是：**它们被做掉的方式与旧文建议的完全一致**（照 `session_jobs` 抄租约；给手写解码器补 fuzz）—— 所以不是当时的判断错了，是**清单没跟上代码**。
 
-⇒ 复核后剩下的 S1 只有 **BE-S1-4**（分派线性扫描，是一次重构）、**BE-S1-5**（要动 v2 契约 ⇒ 得先拍）、**BE-S1-8**（测试卫生）三条 —— **恰好是这张表里最贵、最需要决定的三个**。所以重排后 S2 的两条排到了前面，见 §5。
+⇒ 复核后剩下的 S1 只有 **BE-S1-5**（要动 v2 契约 ⇒ 得先拍）与 **BE-S1-8**（测试卫生）两条 —— `BE-S1-4` 已在第五轮做完（`67c37e0`）。**这张表里最贵、最需要决定的那些，现在只剩这两条了。**
 
 ---
 
@@ -250,22 +281,30 @@
 
 ---
 
-### 5. 如果只做三件事（2026-09-26 四次重排）
+### 5. 如果只做三件事（2026-09-26 五次重排）
 
-⚠️ **前三版的三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
-二次重排的第 1 顺位 BE-S2-4 + BE-S2-5 ✅ `a003b16`；三次重排的第 1 顺位 BE-S2-8 ✅ `182ec75`。
+⚠️ **前四版的前三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
+二次重排的第 1 顺位 BE-S2-4 + BE-S2-5 ✅ `a003b16`；三次重排的第 1 顺位 BE-S2-8 ✅ `182ec75`；
+四次重排的第 1 顺位 BE-S1-4 ✅ `67c37e0`。
 以下是同一判据下的当前顺位，且只从**复核后确认 ❌** 的条目里挑。
 
-1. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下所有条目里**唯一既不需要决定、也不需要动契约、且后果落在生产链路**的一条（`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试夹具收敛）。每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
-2. **BE-S2-2 + BE-S2-3（两处注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了三次。
-3. **BE-S2-7（`test/` 是空目录）** —— 唯一一条答案只能二选一的收尾题：要么把那层集成测试的落点补上，要么删掉空壳。它排在这里是因为**它今天就在骗人**（目录存在意味着「集成测试在这」，实际 1 字节）。
+1. **`BE-S0-7`（`DuplexSession.Close()` 与静音泵抢 `s.conn`）** —— 这是本系列第一次有**生产链路**的条目排到第 1，而且它不是读码读出来的，是**验证撞出来的**（本轮复核 `BE-S1-4` 时跑了一次 `-race`）。后果是数据竞争，最坏是**进程 panic**；触发路径是任何「turn 进行中关会话」（`session.end` / 断连 / provider close），不是边角。它排在 `BE-S1-4` 之后才被发现，恰恰因为它**对七步门禁完全不可见**。
+2. **补上门禁的那条 `-race`（第 1 位的伴随项）** —— `BE-S0-7` 能潜伏到今天，唯一原因就是 `dev-check.sh` 第 4 步是 `go test` 而不是 `go test -race`。**修完缺陷不补门禁，下一条同型缺陷还是看不见。** 但这条要小心写：`-race` 会让整套门禁慢一个量级，且今天它**本来就会红**（在 `BE-S0-7` 修掉之前）—— 所以顺序是「先修 `BE-S0-7`，再把 `-race` 接进门禁」，不能反。
+3. **`BE-S2-2` + `BE-S2-3`（两处注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了四次。
 
-**为什么这次把 `BE-S2-9` 排除在三位之外**：它的后果（`-count>1` 会红）**今天没有任何东西会走到**，
-因为门禁固定 `-count=1`。它是一条真缺陷，但排在「修复后无人受益」的位置上 —— 先修会误导读者的那两条。
+**为什么这次把 `BE-S1-5` / `BE-S1-8` / `BE-S2-7` / `BE-S2-9` 排除在三位之外**：
+`BE-S1-5` 要动 v2 契约（得先拍）；`BE-S1-8` 只是测试夹具收敛；`BE-S2-7` 是「`test/` 空目录」的二选一收尾题；
+`BE-S2-9`（`tts` 断言全局计数器绝对值）的后果 `-count>1` **今天没有任何东西会走到**，因为门禁固定 `-count=1`
+—— 它和第 2 位是**同一个根因**（门禁的选项太窄）：门禁只跑一种配置，于是「换一种跑法才会红」的缺陷有一整类。
 
 **为什么 S2 仍然排在 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的**。分级答的是「不做会怎样」，不是「先做哪一个」。
 
-**BE-S0-1 已从这张表里出局**（2026-09-26 复核）：四仓代码都落地了，剩下真机跑与冻结产物摘要重核，见 §8。它当初被排除在「三件事」之外的理由是**它不能单独做**（需要协议版本、两侧同时改、先确认没有老客户端）—— 而这个理由后来被**一次专门排期**解决了。**它不是被塞进「三件事」里做掉的，是单独做掉的**，这个区分值得留着：S0 的条目不该为了「凑进三件事」而开工。
+**注意第 1 位把 S0 的排法打开了**：下面是 §5 原有的那段话，它是**上一轮**写的，
+本轮的 `BE-S0-7` 恰好是它的反例 —— 留在这里，不要按它去推下一轮。
+
+> **`BE-S0-1` 已从这张表里出局**（2026-09-26 复核）：四仓代码都落地了，剩下真机跑与冻结产物摘要重核，见 §8。它当初被排除在「三件事」之外的理由是**它不能单独做**（需要协议版本、两侧同时改、先确认没有老客户端）—— 而这个理由后来被**一次专门排期**解决了。**它不是被塞进「三件事」里做掉的，是单独做掉的**，这个区分值得留着：S0 的条目不该为了「凑进三件事」而开工。
+
+⚠️ **收回上面这段的一个推论。** 它隐含的是「S0 要等排期，所以不该进三件事」。但 `BE-S0-7` 说明：**S0 进三件事的条件不是「能不能一个人做完」，而是「它还带不带着已知风险在跑」** —— `BE-S0-7` 三种修法都不需要产品决定，只缺一个工程选择，而它每天都在生产链路上跑。分级答的是「不做会怎样」，`BE-S0-7` 的答案是「继续带着数据竞争跑」，这比 S1/S2 的任何一条都靠前。
 
 ---
 
@@ -299,7 +338,7 @@
 | 形状 | iOS | backend |
 |---|---|---|
 | 未知帧要宽容 | ✅ 已做（`316-332`） | ✅ 已做（`465-486`） |
-| 路由表要能断言 | ✅ 字典 + 生产工厂驱动 | ⚠️ 失败策略表可断言，**分派是线性扫描**（BE-S1-4） |
+| 路由表要能断言 | ✅ 字典 + 生产工厂驱动 | ✅ **已修** —— 分派改成 `controlDispatch` 查表，判据双向比对（BE-S1-4，`67c37e0`） |
 | 「判据必须真的能红」 | ❌ 8 份 `waitUntil` 已漂移 5 类 | ✅ `check-defect-discipline.sh` 主动修掉「永远通过」的写法 |
 | 两处枚举会漂移 | ❌ 正在一张票一张票地补（D6/D11） | ✅ **反射双向分类测试**（`handler_write_bound_test.go`） |
 | 同一生命周期两套实现 | ❌ `pcmBuffer` 不变量无测试 | ✅ **已修** —— `materials` 现在也有租约（BE-S1-1，2026-09-26 复核） |
