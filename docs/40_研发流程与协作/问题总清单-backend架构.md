@@ -13,6 +13,34 @@
 > 基线 `c23cc38`。本文件是 `01`–`04` 的收敛：**不引入新结论**，只把四章里已经带证据的条目排成一张可执行的表。
 > 每条都指向原章的行号，可当场复核。
 
+> ### ⚠️ 复核（2026-09-26）—— 本文件已按复核结果改写，读完再挑票
+>
+> 做 PRD 轴 T4 时顺手逐条复核了一遍（当时要挑下一张票，而本文件 §5 正是挑票入口）。
+> **结论：这份清单落后于代码很多，§5 原来的「只做三件事」里 2/3 已经做完。**
+> 照旧文挑票会去做已经存在的东西 —— 这正是本系列最贵的那个形状，只不过这次
+> 骗的是做的人自己。
+>
+> 已复核并改写的：§1 的计数据、§2 全部 9 条、§3 全部 8 条、§5、§7 的租约行。
+> 每条都标了 ✅ / ❌ 与复核用的命令。**未复核到的条目一律原样保留**（§4「不要改」
+> 与 §6 没有复核，它们不是待做项）。方法：每条跑 `ls` / `Grep` / `git log`，
+> 照旧标【实测】/【读码】；**不采信本节旧文里的任何计数**。
+>
+> **已做完的条目对应哪些提交**（`git log` 实测，方便回查）：
+>
+> | 条目 | 提交 |
+> |---|---|
+> | BE-S1-1 `materials` 租约 | `25a015e` fix(materials): 让 `processing` 有一个出口 |
+> | BE-S1-2 `httpjson.Error` 测试 | `01a5e55` test(httpjson): 给每个 API 错误的唯一出口补上行为测试 |
+> | BE-S1-3 解码器 fuzz | `cb99ba3` test(voiceproto): 给手写二进制解码器补上全仓第一个 fuzz |
+> | BE-S1-6 音频热路径 benchmark | `46bd534` test(voicegateway): 给音频热路径补上全仓第一个 benchmark，并据此否掉那条怀疑 |
+> | BE-S1-7 `providerErrorStrategies` | `8c6792c` fix(voicegateway): 让 provider 失败码只有一个来源，并钉住策略表的每一行都真被转发 |
+>
+> ⇒ **这批恰好是按本文件 §5 旧版的顺序做的**（旧文「只做三件事」的第 1、2 条被
+> 逐条落实）。**所以根因不是清单写错了，是清单没有收口环节** —— 做完没人回来标 ✅，
+> 下一个人于是从一份已经兑现的推荐里再挑一遍。§6「推进方式」那套收口纪律写在
+> [`PRD核心业务逻辑落地工单.md`](./PRD核心业务逻辑落地工单.md) §6，本文件没有对应的一节。
+
+
 ### 0. 这份清单怎么读
 
 **分级只按一件事**：不做会怎样。
@@ -33,11 +61,11 @@
 
 | # | 条目 | 卡在谁那里 | 证据 | 确定性 |
 |---|---|---|---|---|
-| BE-S0-1 | **二进制帧带 `turn_id`**（`[4B seq][turn_id][payload]` 或类似） | **跨仓：backend + iOS 同时改** | `voiceproto/frames.go:195-215`；这是 iOS D7 的根因 | 【读码】 |
-| BE-S0-2 | **迁移机制的归属**：上 Go 迁移工具（用上已有的 embed，顺带补版本表）**或**明确声明「迁移靠 shell，只前滚」 | 你 / 运维 | 26 up / 4 down / 0 处 `schema_migrations` / 5 份 shell 副本 | 【实测】 |
-| BE-S0-3 | **26 个迁移里 22 个没有 down** —— 补 down，或正式声明「只前滚」 | 你 / 运维 | `ls migrations/down/` 只有 4 个 | 【实测】 |
-| BE-S0-4 | **`topic_cards` 加唯一键** —— 需先确认历史数据无重复 | 你（数据确认） | `0015` 只有普通索引；`topic/scheduler.go:24` 的 `lastRun` 在内存里 | 【读码】 |
-| BE-S0-5 | **`voicegateway` 的拆分目标形状**（按「连接/provider/救援」还是「协议/状态/IO」） | 你 / 架构 | 71 文件扁平包 | 【实测】 |
+| BE-S0-1 | **二进制帧带 `turn_id`**（`[4B seq][turn_id][payload]` 或类似） | **跨仓：backend + iOS 同时改** | **2026-09-26 复核：四仓代码已落地**（infra `f1a06e8` → backend `662c732` → iOS `ab5f44e`）—— 走的是「控制帧带**可选** `turn_ref`，下行动态选 h4 / h8 帧头」而不是改帧布局。**剩：真机跑 + 冻结产物摘要重核**（见 §8） | 【实测】 |
+| BE-S0-2 | **迁移机制的归属**：上 Go 迁移工具（用上已有的 embed，顺带补版本表）**或**明确声明「迁移靠 shell，只前滚」 | 你 / 运维 | **2026-09-26 复核**：28 up / 4 down / `schema_migrations` 全仓 `grep -rn` **零命中** / **3** 份 shell 副本（旧文写 5：现为 `local-db-init.sh`、`dev-up.sh`、`smoke-review-ready.sh`） | 【实测】 |
+| BE-S0-3 | **28 个迁移里 24 个没有 down** —— 补 down，或正式声明「只前滚」 | 你 / 运维 | **2026-09-26 复核**：`ls migrations/*.sql` = **28**、`ls migrations/down/*.sql` = **4** ⇒ 24 个没有（旧文写 26 up / 22 无 down） | 【实测】 |
+| BE-S0-4 | **`topic_cards` 加唯一键** —— 需先确认历史数据无重复 | 你（数据确认） | **2026-09-26 复核仍成立**：含 `topic_cards` 的迁移只有 `0015` / `0019` / `0025`，三份里**没有任何 `UNIQUE`**；`0015` 只有普通索引 `KEY idx_topic_cards_user_date`；`topic/scheduler.go:24` 的 `lastRun` 在内存里 | 【实测】 |
+| BE-S0-5 | **`voicegateway` 的拆分目标形状**（按「连接/provider/救援」还是「协议/状态/IO」） | 你 / 架构 | **2026-09-26 复核**：`internal/voicegateway` **80** 个 `.go`（25 个非测试），仍是扁平包（旧文写 71） | 【实测】 |
 | BE-S0-6 | **网关不能恢复会话** —— 要「携 `session_id` 重连」需要三样，一样都不存在 | 你 / 产品（要不要这个能力） | iOS 侧已标记 + 钉住：`P1-15` ✅ / `P1-23` ✅ | 【读码】 |
 
 **`BE-S0-1` 与 iOS 的 `iOS-S0-1` 是同一条。** 它在本仓的形态是：`AITTSAudio.Encode` 把 `[4B seq]` 和 payload 直接拼起来，**没有位置放 turn 号**；而 `ai.tts.start` / `ai.tts.end` 的 `turn_id` JSON tag **故意不带 `omitempty`**（声明为必填）。
@@ -64,55 +92,82 @@
 
 ### 2. S1 — 结构上该补的「防线」
 
-| # | 条目 | 动作 | 风险 | 价值 | 证据 |
-|---|---|---|---|---|---|
-| BE-S1-1 | **`materials` 的 refine 没有租约**，`processing` 是没有出口的状态 | 照 `session_jobs` 抄：加 `attempts`/`locked_at` + 清扫，或挪进 `cmd/worker` | 中 | **高** | `03` §2.2 |
-| BE-S1-2 | **`httpjson.Error` 零测试**，而它是每个 API 错误的唯一出口，有 4 个分支 | 补 4 个分支的测试 | 低 | **高** | `04` §3.2 |
-| BE-S1-3 | **手写二进制解码器没有 fuzz**（全仓 0 个 fuzz） | 给 `DecodeAITTSAudio` 写 fuzz | 低 | **高** | `04` §3.1 |
-| BE-S1-4 | **控制帧分派是线性扫描，同一帧被解码最多 8 次** | 改成按类型查表，把已解出的 `frameType` 传下去 | **低**（只搬分派） | 中 | `02` §3.1 |
-| BE-S1-5 | **`ai.audio.chunk` 常量无生产者、无注释** | 加一句「无生产者，保留为协议位」；**v1 已退役但这张死面仍在 v2**（见 §8） | 无 | 低 | `02` §3.2 |
-| BE-S1-6 | **音频热路径的逐帧 `Debug` 日志**，成本无法量化（因为 0 个 benchmark） | 先加 benchmark，再用数据决定 | 低 | 中 | `02` §3.4、`04` §3.1 |
-| BE-S1-7 | **`providerErrorStrategies` 的 key 与 handler 的对应关系只靠读** | 补一条测试：表里每个 key 都必须是真会转发给 provider 的帧类型 | 低 | 中 | `02` §2.1 |
-| BE-S1-8 | **`config.Config` 夹具复制到 23 个文件（约 56 处）** | 抽 `config.TestConfig(t)` | 低 | 中 | `04` §3.4 |
-| BE-S1-9 | **`golangci-lint` 未安装** → `depguard` 那条纪律在本机从未执行过 | 装进 CI 镜像 + 写进 `SETUP.md` 前置条件 | 低 | 中 | `04` §3.5 |
+| # | 条目 | 动作 | 风险 | 价值 | 证据 | 2026-09-26 复核 |
+|---|---|---|---|---|---|---|
+| BE-S1-1 | **`materials` 的 refine 没有租约**，`processing` 是没有出口的状态 | 照 `session_jobs` 抄：加 `attempts`/`locked_at` + 清扫，或挪进 `cmd/worker` | 中 | **高** | `03` §2.2 | ✅ **已完成** `25a015e` |
+| BE-S1-2 | **`httpjson.Error` 零测试**，而它是每个 API 错误的唯一出口，有 4 个分支 | 补 4 个分支的测试 | 低 | **高** | `04` §3.2 | ✅ **已完成** `01a5e55` |
+| BE-S1-3 | **手写二进制解码器没有 fuzz**（全仓 0 个 fuzz） | 给 `DecodeAITTSAudio` 写 fuzz | 低 | **高** | `04` §3.1 | ✅ **已完成** `cb99ba3` |
+| BE-S1-4 | **控制帧分派是线性扫描，同一帧被解码最多 8 次** | 改成按类型查表，把已解出的 `frameType` 传下去 | **低**（只搬分派） | 中 | `02` §3.1 | ❌ **仍开着**（且是 9 次不是 8） |
+| BE-S1-5 | **`ai.audio.chunk` 常量无生产者、无注释** | 加一句「无生产者，保留为协议位」；**v1 已退役但这张死面仍在 v2**（见 §8） | 无 | 低 | `02` §3.2 | ❌ **仍开着** |
+| BE-S1-6 | **音频热路径的逐帧 `Debug` 日志**，成本无法量化（因为 0 个 benchmark） | 先加 benchmark，再用数据决定 | 低 | 中 | `02` §3.4、`04` §3.1 | ✅ **已完成** `46bd534` |
+| BE-S1-7 | **`providerErrorStrategies` 的 key 与 handler 的对应关系只靠读** | 补一条测试：表里每个 key 都必须是真会转发给 provider 的帧类型 | 低 | 中 | `02` §2.1 | ✅ **已完成** `8c6792c`（发现比旧文更严重） |
+| BE-S1-8 | **`config.Config` 夹具复制到 23 个文件（约 56 处）** | 抽 `config.TestConfig(t)` | 低 | 中 | `04` §3.4 | ❌ **仍开着** |
+| BE-S1-9 | **`golangci-lint` 未安装** → `depguard` 那条纪律在本机从未执行过 | 装进 CI 镜像 + 写进 `SETUP.md` 前置条件 | 低 | 中 | `04` §3.5 | ✅ **前提不成立** |
 
-**BE-S1-1 是这张表里最该先做的一条**，理由有三：
+**逐条证据（2026-09-26）**
 
-1. **不需要新设计** —— `session_jobs` 就是模板，连租约常量都有（`DefaultJobLease`）。
-2. **失败模式是用户可见的** —— 用户粘贴材料 → 卡片永远不出来，且**没有任何机制会重试**（`Refine` 对非 `queued` 行直接 no-op）。
-3. **同一个人在同一年写了两条同样的生命周期，一条有租约一条没有** —— 这说明缺的不是能力，是**参照**。
+- **BE-S1-1 ✅** —— 落地物齐全：`materials/model.go` 的 `DefaultRefineLease` / `MaxRefineAttempts = 2` / `ReclaimInterval` / `ErrorLeaseExpired`；`Store.ReclaimExpired`（`memory_store.go:108` + `mysql_store.go:109` 两个实现）；`Service.ReclaimExpired` + `Service.SweepIfDue`（`refiner.go:111` / `:135`，带 `lastSweep` 节流）。判据是 `internal/materials/refine_lease_test.go` **7 条**（活租约不动 / 过期重排 / 次数用尽转 failed / 跳过已删素材 / service 级重跑 / `SweepIfDue` 一个间隔只扫一次 / 重排记 transition）。
+- **BE-S1-2 ✅** —— `internal/httpjson/httpjson_test.go` 存在（与 `httpjson.go` 同级）。
+- **BE-S1-3 ✅** —— `internal/voiceproto/frames_fuzz_test.go:11` 的 `FuzzDecodeAITTSAudio`。**全仓已不止一个 fuzz**（旧文「全仓 0 个」作废）。
+- **BE-S1-4 ❌ 仍开着，且数字变了** —— `handler_control.go:124` 仍是 `handlers := []func(context.Context, *websocket.Conn, ConsumedTicket, []byte, *sessionRuntime) (controlOutcome, error)` 的顺序扫描；`voiceproto.DecodeType(data)` 在该文件出现 **9 次**、`controlNotMine` **12 次**（旧文说「最多 8 次」）。每个 handler 各自从头解一遍类型。
+- **BE-S1-5 ❌ 仍开着** —— `TypeAIAudioChunk` 全仓只有 `voiceproto/frames.go:22` 的声明与 `frames_test.go:764` 的引用，**没有生产者**。§8 已论证 v1 退役没有清掉它。
+- **BE-S1-6 ✅** —— `internal/voicegateway/handler_audio_bench_test.go` **3 条** benchmark（`BenchmarkHandleAudioFrame` / `…DebugEmitted` / `BenchmarkAudioFrameDebugCall`）⇒「0 个 benchmark」作废，热路径 Debug 的成本**第一次可以量化**。
+- **BE-S1-7 ✅ 已完成（`8c6792c`），而且真实情况比旧文写的严重** —— 旧文写「对应关系只靠读」（言下之意是读出来的关系是对的）。实际读下去发现**表里 `user.speech.end` 那一行从来没有被读过**：`startCollectTurn`（`handler.go:686`）自己直接调 `HandleClientControl`，失败时**手写死** `provider_control_failed` ⇒ 改那一行行为不变，它是**装饰**。修法因此不是「补一条测试」，而是**把两处收成一个实现点** `providerErrorCode(frameType)`，两个调用点都走它，并补 `handler_control_policy_test.go`（两条测试 + 一个记录「provider 收到了哪些帧」的 spy）。
+  ⚠️ **我自己第一遍复核把它误判成「仍开着」。** 原因：我搜的是 `ProviderErrorPolicy` / `providerErrorStrategies` 这两个标识符，而新测试里**不出现**它们 —— 它靠 spy 记录收到的帧类型来断言。**「搜不到标识符」≠「没有这个行为」**，是 `git log` 里 `8c6792c` 的提交信息救回来的。
+  ⇒ **教训写在这里：这份文件按「标识符」复核是不可靠的，要按「行为」复核**（或者直接读 `git log`，本仓的提交信息写得很细）。
+- **BE-S1-8 ❌ 仍开着** —— 只有一个**包内私有**的 `testConfig()`（`internal/account/service_test.go:28`），没有跨包可用的 `config.TestConfig(t)`。旧文的「23 个文件 / 约 56 处」未复核，但「没有共享夹具」这条成立。
+- **BE-S1-9 ✅ 前提不成立** —— `scripts/dev-check.sh` 的**第 3 步就是 `golangci-lint run ./...`**，本机跑出 **0 issues**（二进制在 `$(go env GOPATH)/bin`，由门禁自己 export）。⇒「未安装 ⇒ depguard 从未执行」已经不为真。**这一条要留意的不是安装，而是 CI 镜像里装没装** —— 那部分本次没复核。
 
-**BE-S1-3 是性价比最高的一条**：几十行，同时补上「全仓第一个 fuzz」和「手写解码器的输入边界」。
+
+**这两条「最该先做」的都已经做完了**（BE-S1-1 与 BE-S1-3，见上表 ✅）。旧文在这里写「BE-S1-1 是这张表里最该先做的一条」「BE-S1-3 是性价比最高的一条」，两条今天都只剩历史价值。值得记一笔的是：**它们被做掉的方式与旧文建议的完全一致**（照 `session_jobs` 抄租约；给手写解码器补 fuzz）—— 所以不是当时的判断错了，是**清单没跟上代码**。
+
+⇒ 复核后剩下的 S1 只有 **BE-S1-4**（分派线性扫描，是一次重构）、**BE-S1-5**（要动 v2 契约 ⇒ 得先拍）、**BE-S1-8**（测试卫生）三条 —— **恰好是这张表里最贵、最需要决定的三个**。所以重排后 S2 的两条排到了前面，见 §5。
 
 ---
 
 ### 3. S2 — 卫生
 
-| # | 条目 | 证据 |
-|---|---|---|
-| BE-S2-1 | `AGENTS.md:22` 把 `internal/corpus/` 写成 `internal/corpuss/`（照图找目录找不到） | `01` §4.3 |
-| BE-S2-2 | `handler.go:776-778` 有一段**描述不存在的函数** `resolvedUserText` 的孤儿注释 | `02` §3.5 |
-| BE-S2-3 | `uplink_constants.go` 的注释说「两份 uplink 路径都用这个常量」，实际 `voiceduplex` 有自己的 `uplinkChunkBytes` | `01` §2.5 |
-| BE-S2-4 | `httpserver` 的 `discovery` 手写了一份**部分**端点清单（列了 tts/hits/history/privacy/materials/topic_cards，没列 drill/corpus/content） | `01` §2.3 的边表 |
-| BE-S2-5 | `/metrics` 是 7 个包手写文本的拼接，无 registry、无重名检测 | `01` §1 |
-| BE-S2-6 | **7 个指标发射器里只有 2 个对 label 集合排序**，另外 4 个用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 |
-| BE-S2-7 | `test/` 是空目录（只有 `.gitkeep`） | `04` §3.3 |
-| BE-S2-8 | 51 个环境变量没有一份清单（唯一来源是两个 `Config` 结构体） | `03` §4.1 |
+| # | 条目 | 证据 | 2026-09-26 复核 |
+|---|---|---|---|
+| BE-S2-1 | `AGENTS.md:22` 把 `internal/corpus/` 写成 `internal/corpuss/`（照图找目录找不到） | `01` §4.3 | ✅ **已修**（全仓无 `corpuss`） |
+| BE-S2-2 | `handler.go:776-778` 有一段**描述不存在的函数** `resolvedUserText` 的孤儿注释 | `02` §3.5 | ❌ **仍开着，且比旧文更糟** |
+| BE-S2-3 | `uplink_constants.go` 的注释说「两份 uplink 路径都用这个常量」，实际 `voiceduplex` 有自己的 `uplinkChunkBytes` | `01` §2.5 | ❌ **仍开着** |
+| BE-S2-4 | `httpserver` 的 `discovery` 手写了一份**部分**端点清单（列了 tts/hits/history/privacy/materials/topic_cards，没列 drill/corpus/content） | `01` §2.3 的边表 | ❌ **仍开着，逐字未变** |
+| BE-S2-5 | `/metrics` 是 7 个包手写文本的拼接，无 registry、无重名检测 | `01` §1 | ❌ **仍开着** |
+| BE-S2-6 | **7 个指标发射器里只有 2 个对 label 集合排序**，另外 4 个用 map range 直接渲染 → 每次 scrape 的**行序不同** | 见下方 | ❌ **仍开着，仍是 2 / 7** |
+| BE-S2-7 | `test/` 是空目录（只有 `.gitkeep`） | `04` §3.3 | ❌ **仍开着** |
+| BE-S2-8 | 51 个环境变量没有一份清单（唯一来源是两个 `Config` 结构体） | `03` §4.1 | ❌ **仍开着，且比旧文更可量化** |
+
+**逐条证据（2026-09-26）**
+
+- **BE-S2-1 ✅** —— 在 `AGENTS.md` 里搜 `corpuss` 零命中；第 96 行现在写的是 `corpus-seed`。
+- **BE-S2-2 ❌ 仍开着，且比旧文更糟** —— 不是「一段孤立注释」，而是**并进了别的函数的文档注释**：`handler.go:862-868` 是 `extractServerASRText` 的 doc，其中 3 行（「resolvedUserText returns the user's utterance…」）描述的是**另一个函数**，中间还空了一行；而全仓 **没有 `resolvedUserText` 的定义**（只有这一处注释命中，`grep "func.*resolvedUserText"` 零命中）。
+- **BE-S2-3 ❌ 仍开着** —— `voicegateway/uplink_constants.go:12` 是 `const UplinkChunkBytes = 640`，`voiceduplex/volc_duplex.go:956-957` 另有 `uplinkChunkBytes`（注释「20ms of 16 kHz mono s16le (640 bytes)」），数值一致但**改一处不会让另一处红**。
+- **BE-S2-4 ❌ 仍开着，逐字未变** —— `httpserver/server.go:162-179` 的 `discovery` 仍是那六个键（`tts` / `hits` / `history` / `privacy` / `materials` / `topic_cards`），仍然没有 `drill` / `corpus` / `content`。
+- **BE-S2-5 ❌ 仍开着** —— `server.go:181-185` 的 `serveMetrics` 仍是 `tts.PrometheusMetrics()+corpus.PrometheusMetrics()+drill.PrometheusMetrics()+account.PrivacyPrometheusMetrics()+review.PrometheusMetrics()+materials.PrometheusMetrics()+topic.PrometheusMetrics()`；`prometheus` / `registry` 在 `internal/httpserver/` 与 `pkg/` 零命中。
+- **BE-S2-6 ❌ 仍开着** —— 逐文件实测见下表，仍是 2 / 7。
+- **BE-S2-7 ❌ 仍开着** —— `ls test/` 只有 `.gitkeep`（1 字节）。
+- **BE-S2-8 ❌ 仍开着，且比旧文更可量化** —— 把两侧对了一遍：`configs/*.env.example` 声明 **27** 个变量，代码里 **读** 了 **42** 个 ⇒ **21 个只被读、没被声明**（`APP_BASE_URL` / `APP_RUN_REVIEW_WORKER` / `ARK_PRICING_FILE` / `ARK_THINKING` / `DRILL_DAILY_NEW_BLOCK_LIMIT` / `DRILL_PROMOTE_STREAK` / `DRILL_ROUND_SIZE` / `MINI_SESSION_TURN_LIMIT` / `MYSQL_DSN` / `TOPIC_MIN_BLOCKS` / `VOICE_CLIENT_ASR_REQUIRED` / `VOICE_DEV_ECHO_FIXTURE` / `VOICE_DEV_ECHO_TEXT` / `VOLC_DUPLEX_MODEL` / `VOLC_DUPLEX_VOICE` / `VOLC_POC_*`(4) / `VOLC_SPEECH_RESOURCE_TTS` / `VOLC_T9_TRIALS` / `WORKER_ID`）。
+  ⚠️ **这不是纯文档问题**：`dev-up.sh:123-124` 在没有真实 env 文件时**会把 `configs/app-server.env.example` 当环境文件加载** ⇒ 示例漏一个键 = 那个旋钮在开发环境里不存在。**本次已顺手补上 `MINI_SESSION_TURN_LIMIT`**（backend `4cd446a`，T4 的收尾），其余 20 个未动。
+  （现成形状：`TestVolcEnvExampleCarriesTheGatewayWiring` 断言的就是**模板**而非文件 —— 注释写着 "asserts the *template the file is rebuilt from*, which is the half that was wrong"。所以判据形状已经有了，只是没铺开。）
+
 
 **BE-S2-4 值得单独说**：`discovery` 是一个**手写的路由表副本**，而路由表本身是 nil-gated 动态挂载的（`httpserver/server.go:93-129`）。所以「服务有哪些端点」这个问题，**在代码里没有一个地方能一次回答清楚**。它和 iOS 的 `TransportEventRouter` 形成对照：那边是一张**静态可断言**的表（`80_/README` G5）。
 
-**BE-S2-6 的实测明细**（`grep -l "sort\."` 逐文件）：
+**BE-S2-6 的实测明细（2026-09-26 复核，逐文件 `grep -E 'slices\.Sort|sort\.'`）**：
 
-| 发射器 | 对 label 集合排序 |
-|---|---|
-| `internal/corpus/metrics.go` | ✅ |
-| `internal/topic/metrics.go` | ✅ |
-| `internal/drill/metrics.go` | ❌ |
-| `internal/materials/metrics.go` | ❌ |
-| `internal/content/tts/metrics.go` | ❌ |
-| `internal/account/privacy_metrics.go` | ❌ |
+| 发射器 | 对 label 集合排序 | 复核注 |
+|---|---|---|
+| `internal/corpus/metrics.go` | ✅ | |
+| `internal/topic/metrics.go` | ✅ | |
+| `internal/drill/metrics.go` | ❌ | **已经收进 `keys` 切片**（`:62-66`，不再是纯 map range），但**没有排序** —— 注释写着 `stable-ish: unsorted ok for tests Contains` ⇒ 是不确定序，不是 map 随机序，后果一样 |
+| `internal/materials/metrics.go` | ❌ | `:45` 仍是直接的 `for key, n := range transitions` |
+| `internal/content/tts/metrics.go` | ❌ | |
+| `internal/account/privacy_metrics.go` | ❌ | |
 
-**7 个里 2 个排序。** 顺序本身对 Prometheus 不构成错误（行的顺序无语义），但后果是具体的：**`/metrics` 的输出不可复现** —— 不能 diff 两次 scrape、不能在测试里断言整段文本、肉眼扫的时候每次位置都变。而且仓里**两种做法并存**，所以这不是「还没做」，是「做了一半」。
+**7 个里 2 个排序，与旧文一致。** 顺序本身对 Prometheus 不构成错误（行的顺序无语义），但后果是具体的：**`/metrics` 的输出不可复现** —— 不能 diff 两次 scrape、不能在测试里断言整段文本、肉眼扫的时候每次位置都变。而且仓里**两种做法并存**，所以这不是「还没做」，是「做了一半」。
+
+⇒ **这是 §5 重排后的第一顺位**，因为它有一条**能写的判据**：「同一状态渲染两次必须逐字节相同」。这条今天会红（drill 的 `keys` 是切片但未排序，materials 还是 map range）。
 
 **确定性：【实测】。**
 
@@ -135,15 +190,17 @@
 
 ---
 
-### 5. 如果只做三件事
+### 5. 如果只做三件事（2026-09-26 重排）
 
-按「不做会怎样」排序，我选这三条：
+⚠️ **旧版的三条里两条已经做完了**（BE-S1-1 ✅ `25a015e`；BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`）。以下是按**同一判据**（不做会怎样）重排的结果，且只从**复核后确认 ❌** 的条目里挑。
 
-1. **BE-S1-1（`materials` 补租约）** —— 用户可见的失败模式 + 同仓有现成模板 + 不需要新设计。这是本系列**最具体**的一条。
-2. **BE-S1-2 + BE-S1-3（`httpjson.Error` 的测试 + 解码器 fuzz）** —— 两条都是「补上唯一出口的输入边界」，加起来成本很低，而且它们补的是**这个仓完全空着的两类覆盖**（错误路径 / 输入边界）。
-3. **BE-S0-2（迁移机制的归属）** —— 它不紧急，但它是**唯一一条会持续误导读者**的条目。`migrations` 包看起来是机制、实际是夹具。
+1. **BE-S2-6（4 / 7 个指标发射器不排序）** —— 唯一一条**后果可以直接写成判据**的：「同一状态渲染两次必须逐字节相同」。这条判据**今天会红**。而且它是本表里少见的「做了一半」形状 —— corpus / topic 已经对了，照抄即可。
+2. **BE-S2-4 + BE-S2-5（`discovery` 与 `/metrics` 各有一份手写副本）** —— 两条同源：「服务有哪些端点 / 哪些指标」在代码里**没有一个地方能一次答清**。§7 拿它跟 iOS 的 `TransportEventRouter` 对照（那边是一张**静态可断言**的表），backend 这边两处都是手抄。`BE-S2-4` 尤其具体：六个键里少了三块（`drill` / `corpus` / `content`）。
+3. **BE-S1-4（控制帧分派是线性扫描 + 同一帧被重复解码）** —— 剩下三条 S1 里**唯一既不需要决定、也不需要动契约**的一条（另两条：`BE-S1-5` 要改 v2 契约，`BE-S1-8` 只是测试卫生）。它是 S1 是因为「不做会在下一次同类缺陷上再花一遍时间」：每加一类帧，就要在 9 个 handler 里各插一次 `DecodeType` + `controlNotMine`。
 
-**不选 BE-S0-1（二进制帧 turn_id）不是因为不重要** —— 它恰恰是最重要的（关掉 iOS D7）。它排在 S0 是因为**它不能单独做**：需要协议版本、两侧同时改、并且要先确认没有老客户端。**这是需要一次专门协调的事，不是一次重构。**
+**为什么这次 S2 排到了 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的三条**（一次重构 / 一次契约变更 / 一次测试夹具收敛），而上面第 1、2 条成本低、各自自带一条能红的判据。分级答的是「不做会怎样」，不是「先做哪一个」。
+
+**BE-S0-1 已从这张表里出局**（2026-09-26 复核）：四仓代码都落地了，剩下真机跑与冻结产物摘要重核，见 §8。它当初被排除在「三件事」之外的理由是**它不能单独做**（需要协议版本、两侧同时改、先确认没有老客户端）—— 而这个理由后来被**一次专门排期**解决了。**它不是被塞进「三件事」里做掉的，是单独做掉的**，这个区分值得留着：S0 的条目不该为了「凑进三件事」而开工。
 
 ---
 
@@ -180,7 +237,7 @@
 | 路由表要能断言 | ✅ 字典 + 生产工厂驱动 | ⚠️ 失败策略表可断言，**分派是线性扫描**（BE-S1-4） |
 | 「判据必须真的能红」 | ❌ 8 份 `waitUntil` 已漂移 5 类 | ✅ `check-defect-discipline.sh` 主动修掉「永远通过」的写法 |
 | 两处枚举会漂移 | ❌ 正在一张票一张票地补（D6/D11） | ✅ **反射双向分类测试**（`handler_write_bound_test.go`） |
-| 同一生命周期两套实现 | ❌ `pcmBuffer` 不变量无测试 | ❌ `materials` 无租约，`session_jobs` 有（BE-S1-1） |
+| 同一生命周期两套实现 | ❌ `pcmBuffer` 不变量无测试 | ✅ **已修** —— `materials` 现在也有租约（BE-S1-1，2026-09-26 复核） |
 | 死声明（声明了没人用） | ❌ `handshake` 死面 | ❌ `ai.audio.chunk` 无生产者（BE-S1-5） |
 | 二进制帧缺 `turn_id` | ❌ D7 的根因 | ❌ 同一件事的另一侧（BE-S0-1） |
 | 跨层/端到端测试位置空着 | ❌ `Integration/` 51 行 | ⚠️ `test/` 空，但 `scripts/smoke-*.sh` 有 12 个 |
@@ -228,7 +285,18 @@ iOS 侧 `wssControlFramesSchemaHasUserSpeechEndTurnAndText` 与
 搜到 v1 时按本节理解）：`51_`、`61_`、`64_`、`76_`、`77_`。
 
 **同一个坑对新冻结产物的提醒**：`schemas/transport/wss-binary-audio-frames-v1.json`
-同样用 sha256 冻结，而其中 h8 布局**没有任何一端实现过**。它用 `status` 字段显式标注了
+同样用 sha256 冻结，而其中 h8 布局**在写下这段时没有任何一端实现过**。它用 `status` 字段显式标注了
 「target (Stage 3) — not implemented by either side yet」；实现落地后必须重新核对并刷新
 摘要，不能把当时的猜测当成已验证的契约。
+
+⚠️ **这段提醒在 2026-09-26 已经到期**（复核）：Stage 3 的代码**四个仓都已落地** ——
+infra `f1a06e8`（v2 加可选 `turn_ref`，即布局开关）+ `1a54ee4`（刷新冻结产物的实现状态与摘要）、
+backend `662c732`（下行 TTS 音频分配并置 `turn_ref`）、iOS `ab5f44e`（客户端容忍 h4 / h8
+两种二进制帧头）。backend 侧已有 `voiceproto.AudioFrameLayoutH4` / `AudioFrameLayoutH8` 与
+`AudioFrameLayoutFor`，并有 `TestAudioFrameLayoutForIsTheOnlyLayoutDecision` 钉住「它是布局
+的**唯一**决策点」（H4 头 4 字节 / H8 头 8 字节 / 有 `turn_ref` 才选 H8）。
+⇒ **只剩两件，且都不是本文件能单独关掉的**：① `status` 与冻结摘要要按**实现后的事实**重新核对
+（不能留着 "not implemented by either side yet"）；② **h8 链路一次端到端真机跑都没有**
+（= [`PRD核心业务逻辑落地工单.md`](./PRD核心业务逻辑落地工单.md) 的 **T6**）。
+**BE-S0-1 因此应当从「不能单独做」升级为「四仓已落地，待真机验证」** —— 见 §1 与总清单 §1.1。
 
