@@ -86,7 +86,7 @@
 | BE-S0-6 | **网关不能恢复会话** —— 要「携 `session_id` 重连」需要三样，一样都不存在 | 你 / 产品（要不要这个能力） | iOS 侧已标记 + 钉住：`P1-15` ✅ / `P1-23` ✅ | 【读码】 |
 | BE-S0-7 | **`DuplexSession.Close()` 与静音泵 goroutine 抢 `s.conn`** —— 数据竞争，且最坏后果不是竞态而是 panic | 你 / 架构（修法三选一，见下） | ✅ **已完成**（backend `c5cd0f5`，取修法 2 + 一处收窄：锁只护**读**，写走「先脱开、再拆除」）—— 见下方收口 | 【实测】 |
 | BE-S0-8 | **一轮结束时静音泵的 ctx 被取消，把整条 duplex 连接打死** —— 下一轮直接 `ErrDuplexClosed` | 你 / 架构（修法三选一，见下） | ✅ **已完成**（backend `4f5930d`，取修法 1 的**收敛版**：不是给泵打补丁，而是把**整条写路径**收到会话级 ctx 上；顺带挖出 `WithoutCancel` 是必需的，理由见下方收口） | 【实测】 |
-| BE-S0-9 | **一轮超时 = 整条 duplex 死亡，而日志把死连接报成一次普通的 `outcome=timeout`** —— 读侧的同一个形状 | 你 / 架构（**读模型**三选一，见下方专段；不能照抄 `BE-S0-8` 的修法） | **2026-09-27 新发现，由本轮取证撞出**（修完 `BE-S0-8` 后顺手查读侧）。复现【实测】且**确定性**：一轮静默到超时 → 服务端立刻 EOF → 第 2 轮 `duplex connection closed` | 【实测】 |
+| BE-S0-9 | **一轮超时 = 整条 duplex 死亡，而日志把死连接报成一次普通的 `outcome=timeout`** —— 读侧的同一个形状 | 你 / 架构（**读模型**三选一，见下方专段；不能照抄 `BE-S0-8` 的修法） | ✅ **已完成**（backend `753dbd6`）—— 取的**不是**原三选一里的第 2 条（承认超时即会话死、只把死连接报准），而是把「窗口」与「socket」彻底分开：唯一 reader goroutine 走会话级 ctx，三处窗口退化成纯 `select`。见下方收口 | 【实测】 |
 
 **`BE-S0-1` 与 iOS 的 `iOS-S0-1` 是同一条。** 它在本仓的形态是：`AITTSAudio.Encode` 把 `[4B seq]` 和 payload 直接拼起来，**没有位置放 turn 号**；而 `ai.tts.start` / `ai.tts.end` 的 `turn_id` JSON tag **故意不带 `omitempty`**（声明为必填）。
 
@@ -283,6 +283,32 @@ _ = s.send(ctx, map[string]any{"type": "input_audio_buffer.append", ...})
 2. **承认「超时即会话死」，并让它可见**：`outcome=timeout` 显式标记为「需要重连」，让调用方的「换一条 duplex」变成有意的动作，而不是一次被读成 timeout 的静默死亡。**最小改动，但它只是把死连接报准，不是修好。**
 3. **改成唯一 reader goroutine 派发事件**（有界事件 channel）：轮窗口只影响**消费者**的等待，永远不碰 socket。最彻底，也最大。
 
+**✅ 收口（2026-09-27，backend `753dbd6`）—— 取的是第 3 条，但比它小得多**
+
+票里说三条「成本差一个数量级」，**复核后这个判断是错的**：第 1 条与第 3 条其实是**同一件事的两半**（唯一 reader + 窗口退化成「消费者自己的等待」），合起来才是完整答案 —— 而它的收敛面只有 `recv` 一个函数，三处调用点一行都不用改。
+
+| 项 | 结果 |
+|---|---|
+| 改法 | 新增会话级 `readCtx`（`WithCancel(WithoutCancel(ctx))`）+ `cancelRead`，**只在 `Close` 里释放**；新增 `readLoop`（唯一读 socket 的 goroutine）；`recv` 变成纯 `select`（`events` / `ctx.Done()` / `readDone`） |
+| 三处窗口调用点 | **一行都没改** —— 照旧传自己的窗口 ctx，语义逐条保持：`DeadlineExceeded` → `timeout`/`partial`、`Canceled` → `ErrTurnCancelled`、死连接 → `ErrDuplexClosed` |
+| 收敛面 | 按源码重数是**三处**对称的点（轮窗口 `:795`、8s update 窗口 `:312`、3s drain `:545`）—— 与 `BE-S0-8` 一样，不是一处。票里只写了轮窗口那一处 |
+| `WithoutCancel` | **必需，不是装饰**，与写侧同理由（`defaultResetDuplex` 用带 `defer cancel()` 的 ctx 开会话）—— 判据 4 钉它 |
+
+**判据（`internal/voiceduplex/session_read_ctx_test.go`，四条，全部留仓）**
+
+| 判据 | 形态 | 修前 | 修后 |
+|---|---|---|---|
+| `TestEveryFrameOffTheWireUsesTheSessionReadContext` | **结构（确定性）** —— `conn.Read` 只许在 `readLoop` 一处；`cancelRead` 只许在 `Close` 里被调 | 红 | 绿 |
+| `TestATurnTimeoutDoesNotKillTheSession` | 行为 —— 第 1 轮必然超时，第 2 轮必须成功 | 红（确定性） | 绿 |
+| `TestAWindowExpiryLeavesTheSocketReadable` | 行为 —— `recv` 上最小的那一形式 | 红（确定性） | 绿 |
+| `TestTheReaderOutlivesTheContextThatOpenedIt` | 行为 —— 对称于写侧那条 | 绿（特征化） | 绿 |
+
+变异 **6 条全部咬住**（并点名测试）：`recv` 回到直读 socket / `Close` 不再释放读 ctx / 读 ctx 派生自调用者 / 死连接的错不再包 `ErrDuplexClosed` / 轮窗口过期时取消会话级读 ctx / 删掉放手分支。
+
+**这一轮最值得记的是：既有判据当场拦下了一次回归。** 第一版 `recv` 在 `readDone` 分支返回的是库的原始 close-frame 错误，而 `BE-S0-7` 立的契约（关掉的会话，每个方法都要给出**包住 `ErrDuplexClosed`** 的答案）就在 `TestAClosedSessionAnswersEveryFrameWithAnError` 里 —— **它红了**，修好之后由变异 M4 钉住。⇒ 前几轮写的判据不是文档，是**真的会在下一轮咬人**的。
+
+**判据自己也被咬了一次**：结构判据的第一版只匹配裸 `recv(`，而调用点是 `s.recv(...)`，于是「一个调用点都没扫到」—— 反空洞分支**按设计报了「提取分支失效，本判据给不出结论」**，而不是报「仓库干净」。这是反空洞第一次在**判据自身**的缺陷上生效。
+
 
 ### 2. S1 — 结构上该补的「防线」
 
@@ -328,7 +354,7 @@ _ = s.send(ctx, map[string]any{"type": "input_audio_buffer.append", ...})
 | # | 条目 | 证据 | 2026-09-26 复核 |
 |---|---|---|---|
 | BE-S2-1 | `AGENTS.md:22` 把 `internal/corpus/` 写成 `internal/corpuss/`（照图找目录找不到） | `01` §4.3 | ✅ **已修**（全仓无 `corpuss`） |
-| BE-S2-2 | `handler.go:776-778` 有一段**描述不存在的函数** `resolvedUserText` 的孤儿注释 | `02` §3.5 | ❌ **仍开着，且比旧文更糟** |
+| BE-S2-2 | `handler.go:776-778` 有一段**描述不存在的函数** `resolvedUserText` 的孤儿注释 | `02` §3.5 | ❌ **仍开着，且比旧文更糟**；**2026-09-27 又发现同形第三条**：`voiceduplex/volc_duplex.go:1153-1157` 是一段**孤立的 `FirstNonEmpty` 文档注释**，与它下面 `:1159-1163` 真正那段重复，且理由与代码现状对不上 |
 | BE-S2-3 | `uplink_constants.go` 的注释说「两份 uplink 路径都用这个常量」，实际 `voiceduplex` 有自己的 `uplinkChunkBytes` | `01` §2.5 | ❌ **仍开着** |
 | BE-S2-4 | `httpserver` 的 `discovery` 手写了一份**部分**端点清单（列了 tts/hits/history/privacy/materials/topic_cards，没列 drill/corpus/content） | `01` §2.3 的边表 | ✅ **已完成**（backend `a003b16`） |
 | BE-S2-5 | `/metrics` 是 7 个包手写文本的拼接，无 registry、无重名检测 | `01` §1 | ✅ **已完成**（backend `a003b16`） |
@@ -341,6 +367,7 @@ _ = s.send(ctx, map[string]any{"type": "input_audio_buffer.append", ...})
 
 - **BE-S2-1 ✅** —— 在 `AGENTS.md` 里搜 `corpuss` 零命中；第 96 行现在写的是 `corpus-seed`。
 - **BE-S2-2 ❌ 仍开着，且比旧文更糟** —— 不是「一段孤立注释」，而是**并进了别的函数的文档注释**：`handler.go:862-868` 是 `extractServerASRText` 的 doc，其中 3 行（「resolvedUserText returns the user's utterance…」）描述的是**另一个函数**，中间还空了一行；而全仓 **没有 `resolvedUserText` 的定义**（只有这一处注释命中，`grep "func.*resolvedUserText"` 零命中）。
+  **2026-09-27 补第三条（同形，只是不是「缺失」而是「重复」）**：`voiceduplex/volc_duplex.go:1153-1157` 与 `:1159-1163` 是**两段** `FirstNonEmpty` 文档注释，中间隔一个空行；两段都以 "FirstNonEmpty returns the first value with any non-space content." 开头，第二段 `Exported because the smoke probes in the PoC package…` 才是与代码对得上的那个，而第一段那句 `both halves of the package this was split out of` 说的是这次拆分**之前**的形状。⇒ 同一种病在同一天的第 6 次：**注释把读者带到一个不存在的世界，而代码看起来完全正常**。
 - **BE-S2-3 ❌ 仍开着** —— `voicegateway/uplink_constants.go:12` 是 `const UplinkChunkBytes = 640`，`voiceduplex/volc_duplex.go:956-957` 另有 `uplinkChunkBytes`（注释「20ms of 16 kHz mono s16le (640 bytes)」），数值一致但**改一处不会让另一处红**。
 - **BE-S2-4 ✅ 已完成**（backend `a003b16`）—— `discovery` 不再手写：`publicEndpoints` 读 `engine.Routes()`，按 `apiPrefix` 后的首段分组、组内排序。**并且顺带关掉一个披露面**：旧表把 `/internal/v1/tts/synthesize` 与 `/internal/v1/voicegateway/hits` 写在了一个**不需要任何令牌**的端点上，现在内部面按前缀整体扣掉。
   ⚠️ **这一步我最初判定「零消费方」是错的**：我用 `grep -v _test.go` 检索，正好把消费方筛掉了 —— 它是一条测试（`internal/session/http_test.go` 的 `TestOpenAPIDiscoveryEndpoints`，断言 `discovery["openapi"] == "/openapi.yaml"`），已同步到新形状。**与 BE-S1-7 同型：「搜不到标识符」≠「没有这个行为」。**
@@ -431,31 +458,38 @@ _ = s.send(ctx, map[string]any{"type": "input_audio_buffer.append", ...})
 
 ---
 
-### 5. 如果只做三件事（2026-09-27 八次重排）
+### 5. 如果只做三件事（2026-09-27 九次重排）
 
-⚠️ **前七版的前三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
+⚠️ **前八版的前三条也都做完了**：旧版 BE-S1-1 ✅ `25a015e`、BE-S1-2 + BE-S1-3 ✅ `01a5e55` / `cb99ba3`；
 二次重排的第 1 顺位 BE-S2-4 + BE-S2-5 ✅ `a003b16`；三次重排的第 1 顺位 BE-S2-8 ✅ `182ec75`；
-四次重排的第 1 顺位 BE-S1-4 ✅ `67c37e0`；五次重排的第 1 顺位 BE-S0-7 ✅ `c5cd0f5`。
-**七次重排的第 1、2 位本轮都落地了**：`BE-S0-8` ✅ `4f5930d`、门禁接 `-race` + 第 8 步守卫 ✅ `ca58de9`。
+四次重排的第 1 顺位 BE-S1-4 ✅ `67c37e0`；五次重排的第 1 顺位 BE-S0-7 ✅ `c5cd0f5`；
+七次重排的第 1、2 位 ✅ `4f5930d` / `ca58de9`；**八次重排的第 1 顺位 `BE-S0-9` ✅ `753dbd6`**。
 以下是同一判据下的当前顺位，且只从**复核后确认 ❌** 的条目里挑。
+⚠️ **注意这一版三位全是 S2** —— 见下方「为什么 S2 排在最前面」。
 
-1. **`BE-S0-9`（一轮超时把整条 duplex 打死，而日志报成一次普通的 `timeout`）** —— 本轮新发现，读侧。它能排第 1 位有两条硬的：① **生产链路**上带着已知风险在跑（`TurnOutcomeTimeout` 是设计好的正常状态，所以「超时」这条路会真的走到），而它把会话打死后，下一轮的失败被归到别的原因上；② 它的复现是**确定性**的（不像 `BE-S0-8` 那样靠概率），所以判据好写、修好可验。**它卡的不是人手，是读模型的选择**（三条见 §1 专段）—— 而这三条的成本差一个数量级，所以**第一步不是挑方案，是挑第一步**：建议先做第 2 条（把「超时即会话死」显式标出来，让调用方的重连变成有意的动作），它是一个小改动，且无论后面选 1 还是 3 都不会白做。
-2. **`BE-S2-2` + `BE-S2-3`（两处注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了五次。
-3. **`BE-S2-7`（`test/` 是空目录）** —— 唯一一条答案只能二选一的收尾题：要么把那层集成测试的落点补上，要么删掉空壳。它排在这里是因为**它今天就在骗人**（目录存在意味着「集成测试在这」，实际 1 字节）。
+1. **`BE-S2-2` + `BE-S2-3`（注释在描述别的东西）** —— 两条同源，且 `BE-S2-2` **比旧文写的更糟**：不是一段孤立注释，而是并进了 `extractServerASRText` 的文档注释里（3 行描述一个全仓不存在的函数）。**2026-09-27 又发现第三条同形的，就在本轮改的文件里**：`voiceduplex/volc_duplex.go:1153-1157` 是一段**孤立的 `FirstNonEmpty` 文档注释**，与它下面（`:1159-1163`）**真正的**那段重复了「returns the first value」与「Exported because…」，而孤立的那个理由（"the two halves of the package this was split out of"）与代码现状对不上。它们不是功能缺陷，但它们**主动误导读者** —— 而本清单一天里被同一种病咬了五次。
+2. **`BE-S2-7`（`test/` 是空目录）** —— 唯一一条答案只能二选一的收尾题：要么把那层集成测试的落点补上，要么删掉空壳。它排在这里是因为**它今天就在骗人**（目录存在意味着「集成测试在这」，实际 1 字节）。
+3. **`BE-S2-9`（`tts` 断言全局计数器绝对值）** —— 它和**已完成的第 2 位（门禁接 `-race`）是同一个根因**：门禁只跑一种配置，于是「换一种跑法才会红」的缺陷有一整类。`-race` 接了，这类缺陷只关掉了一半；剩下的一半正是这一条（`-count>1` 必红）。它排在这里是因为**成本最低、且可以被一条命令立刻证伪**：`go test -count=2 ./internal/content/tts/`。它不影响生产，所以排在两条「在骗人」的后面。
 
-**⚠️ 七次重排的第 1、2 位本轮都做完了**（原文保留在下方）：
+**⚠️ 八次重排的第 1 位本轮做完了**（原文保留在下方，**不要按它推下一轮**）：
+
+> 1. **`BE-S0-9`（一轮超时把整条 duplex 打死，而日志报成一次普通的 `timeout`）** —— 本轮新发现，读侧。它能排第 1 位有两条硬的：① **生产链路**上带着已知风险在跑（`TurnOutcomeTimeout` 是设计好的正常状态，所以「超时」这条路会真的走到），而它把会话打死后，下一轮的失败被归到别的原因上；② 它的复现是**确定性**的（不像 `BE-S0-8` 那样靠概率），所以判据好写、修好可验。**它卡的不是人手，是读模型的选择**（三条见 §1 专段）—— 而这三条的成本差一个数量级，所以**第一步不是挑方案，是挑第一步**：建议先做第 2 条（把「超时即会话死」显式标出来，让调用方的重连变成有意的动作），它是一个小改动，且无论后面选 1 还是 3 都不会白做。
+
+- 第 1 位 `BE-S0-9` ✅ **`753dbd6`** —— 修法**变了，而且票里那句「三条成本差一个数量级」被推翻**：第 1 条与第 3 条其实是同一件事的两半（唯一 reader + 窗口退化成「消费者自己的等待」），合起来才是完整答案，收敛面只有 `recv` 一个函数、三处调用点一行都不用改。**没有取「先做第 2 条」那条建议** —— 第 2 条只是把死连接报准，而真正的修法成本并不比它高一个数量级。
+- 第 2、3 位 `BE-S2-2` + `BE-S2-3` / `BE-S2-7` 未动，本轮升到第 1、2。
+
+**八次重排的第 1、2 位（更早那一版）也已做完**：
 
 > 1. **`BE-S0-8`（轮边界打死整条 duplex）** …… 它是新的第 1 位……
 > 2. **补上门禁的那条 `-race`** …… 但它未接线、门禁也没改……
 
 - 第 1 位 `BE-S0-8` ✅ **`4f5930d`** —— 修法**变了**：不是「给泵打补丁」，而是把整条写路径收到会话级 ctx 上（9 个写点都走同一条路）。唯一原样采纳的是修法 1 的方向。
 - 第 2 位（门禁接 `-race`）✅ **`ca58de9`** —— 第 4 步改 `go test -race ./...`，加第 8 步 `scripts/check-gate.sh`；CI 同步接上。八步门禁端到端 **27.3s**。
-- 第 3 位 `BE-S2-2` + `BE-S2-3` 未动，本轮顺位升到第 2。
 
-**为什么这次把 `BE-S1-5` / `BE-S1-8` / `BE-S2-9` 排除在三位之外**（不变）：
-`BE-S1-5` 要动 v2 契约（得先拍）；`BE-S1-8` 只是测试夹具收敛；
-`BE-S2-9`（`tts` 断言全局计数器绝对值）的后果 `-count>1` 今天没有任何东西会走到，因为门禁不跑 `-count>1`
-—— 它和第 2 位是**同一个根因**（门禁的选项太窄）：门禁只跑一种配置，于是「换一种跑法才会红」的缺陷有一整类。**`-race` 接了，这条的根因只解决了一半**：剩下的一半要等门禁肯跑第二种 `-count`。
+**为什么这次把 `BE-S1-5` / `BE-S1-8` 排除在三位之外**：
+`BE-S1-5` 要动 v2 契约（得先拍）；`BE-S1-8` 只是测试夹具收敛（把 `config.Config` 复制到 23 个文件的事收成一个 helper）—— 两条既不在骗人，也不带着风险在跑。
+
+⚠️ **`BE-S2-9` 本轮从「排除」变成第 3 位。** 上一版挡它的理由是「`-count>1` 今天没有任何东西会走到，因为门禁不跑 `-count>1`」—— 那个事实没错，但它被用成了「所以不用做」。正确的读法是反过来的：**它是「门禁的选项」这个盲区的另一半，而且门禁只需要一条 `-count>1` 就会照到它**。第 2 位（接 `-race`）关掉的是这个盲区的一半。
 
 **为什么 S2 仍然排在 S1 前面**：旧文的分级（S1 = 不做会在下一次同类缺陷上再花一遍时间；S2 = 只是让下一个人多读一会儿）本身没错，但**复核后剩下的 S1 恰好是最贵、最需要前提的**。分级答的是「不做会怎样」，不是「先做哪一个」。
 
