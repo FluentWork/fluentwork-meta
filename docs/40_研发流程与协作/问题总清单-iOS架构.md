@@ -112,7 +112,7 @@
 | iOS-S2-5 | 三种隔离策略并存（17 actor / 5 `@MainActor` / 11 锁），无统一规则 | `02` §4.5 |
 | iOS-S2-6 | 7 个 `.shared` 进程单例，没有逐个论证为什么必须是单例 | `02` §4.1 |
 | iOS-S2-7 | Moya 钉在个人 fork 的 `master` 分支，不是 tag/revision | `01` §4.2 |
-| iOS-S2-8 | `Modules/` 是空目录（只有 `.gitkeep`） | `01` §4.1 |
+| iOS-S2-8 | `Modules/` 是空目录（只有 `.gitkeep`） | ✅ **已解决 —— 且是「删掉空壳」这一边**（`80c8209`，2026-09-25：`Modules/.gitkeep` 与 `Resources/.gitkeep`、`Services/.gitkeep` **三个空壳一起删掉**）。⚠️ **2026-09-28 复核**：`fluentwork-ios` 顶层现在只有 `App/ FluentWorkHost.xcodeproj/ Scripts/ Shared/ Tests/`，`Modules/` **不存在**；全仓对 `Modules/` 的引用零命中。⇒ backend 侧同形的 `BE-S2-7` 于 2026-09-28 取同一个选择（`41cea71`），两条是同一病两侧 | `01` §4.1 |
 | iOS-S2-9 | ~~`LiveAudioEngine.deinit` 无条件 `removeTap`~~ **已关闭（2026-09-25，`70_/28_`）—— 且它不该留在 S2**：实测**全量 `swift test` 期间输入设备被打开 28 次**（`deinit` 每次销毁都求值 `engine.inputNode`，而那一步就是打开设备）。不是卫生问题，是「测试在调用真机麦克风」 | 已按 `70_/16_` §7.1 给出的判据修（只移除自己装过的 tap） | `70_/16_` §7.1 → `70_/28_` |
 | iOS-S2-10 | `sendInterrupt()` 吞掉 `try?` | `70_/19_` §7 |
 | iOS-S2-11 | `handshake` 是 iOS 侧死面（`Shared/` 从不构造它） | `70_/20_` §7 |
